@@ -40,20 +40,16 @@ case class Path(elements: Vector[Path.Element]) {
    *
    * @return True if this path is normal.
    */
-  def isNormal: Boolean = elements forall {
-    case Current => false
-    case _ => true
-  }
+  def isNormal: Boolean =
+    !elements.contains(Current) && !elements.dropWhile(_ == Parent).contains(Parent)
 
   /**
    * True if this path is resolved (has no '.' or '..' elements).
    *
    * @return True if this path is resolved.
    */
-  def isResolved: Boolean = elements forall {
-    case Child(_) => true
-    case _ => false
-  }
+  def isResolved: Boolean =
+    !elements.exists(e => e == Current || e == Parent)
 
   /** The parent of this path. */
   def parent: Path =
@@ -152,7 +148,7 @@ case class Path(elements: Vector[Path.Element]) {
    * @return The normalized version of this path.
    */
   def normalized: Path =
-    Path((Vector[Element]() /: elements) { (result, element) =>
+    if (isNormal) this else Path((Vector[Element]() /: elements) { (result, element) =>
       element match {
         case Current => result
         case Parent if result.isEmpty || result.last == Parent => result :+ Parent

@@ -1,5 +1,5 @@
 /*
- * Context.scala
+ * ParserSpec.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -17,18 +17,23 @@
  */
 
 package net.wayfarerx.emanate
+package model
 
-import cats.effect.IO
+import org.scalatest._
 
 /**
- * Description of the context that a task operates in.
+ * Test case for the markdown parser.
  */
-trait Context {
+class ParserSpec extends FlatSpec with Matchers {
 
-  def resolve[T <: Asset.Type](file: Asset[T]): IO[Option[Asset.Resolved[T]]]
+  behavior of "Parser"
 
-  def resolve[T <: AnyRef](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
+  it should "parse a document" in {
 
-  def load[T <: AnyRef](entity: Entity[T]): IO[Option[T]]
+    val doc = new Parser(Map())(getClass.getResourceAsStream("parser-test.md"))
+
+    doc.unsafeRunSync()
+
+  }
 
 }

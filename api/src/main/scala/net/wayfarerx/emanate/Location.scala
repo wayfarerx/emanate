@@ -45,7 +45,7 @@ final class Location private(val path: Path) extends Product1[Path] {
 
   /* Return the absolute path. */
   override def toString: String =
-    s"/$path"
+    s"/$path/"
 
 }
 

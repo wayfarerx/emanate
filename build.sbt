@@ -31,11 +31,11 @@ lazy val main = (project in file("main")).
     common,
     name := "emanate-main",
     libraryDependencies += scalaTest % Test
-  ).dependsOn(api, model)
+  ).dependsOn(model)
 
 lazy val server = (project in file("server")).
   settings(
     common,
     name := "emanate-server",
     libraryDependencies += scalaTest % Test
-  ).dependsOn(api, model)
+  ).dependsOn(model)

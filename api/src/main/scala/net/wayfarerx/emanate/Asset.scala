@@ -86,10 +86,10 @@ object Asset {
   trait Type {
 
     /** The asset type of this type. */
-    type FileType <: Asset.Type
+    type AssetType >: this.type <: Asset.Type
 
     /** The name of this type. */
-    def name: Name
+    def name: Name = simpleName.get
 
     /** The prefix that is prepended to the asset name when searching. */
     def prefix: String
@@ -97,31 +97,37 @@ object Asset {
     /** The extensions that satisfy this asset type. */
     def extensions: ListSet[String]
 
-    /**
-     * Creates a new asset of this type.
-     *
-     * @param name The name of the asset.
-     * @return A new asset of this type.
-     */
-    def apply(name: Name): Asset.Named[FileType]
+    /** The simple name of this type. */
+    private lazy val simpleName: Option[Name] = Name(getClass.getSimpleName)
 
     /**
      * Creates a new asset of this type.
      *
-     * @param path     The path of the asset.
-     * @param fileName The name of the asset file.
+     * @param assetName The name of the asset.
      * @return A new asset of this type.
      */
-    def apply(path: Path, fileName: String): Asset.Relative[FileType]
+    final def apply(assetName: Name): Asset.Named[AssetType] =
+      Asset.Named(assetName, this)
 
     /**
      * Creates a new asset of this type.
      *
-     * @param location The location of the asset.
-     * @param fileName The name of the asset file.
+     * @param assetPath The path of the asset.
+     * @param assetName The name of the asset file.
      * @return A new asset of this type.
      */
-    def apply(location: Location, fileName: String): Asset.Absolute[FileType]
+    final def apply(assetPath: Path, assetName: String): Asset.Relative[AssetType] =
+      Asset.Relative(assetPath, assetName, this)
+
+    /**
+     * Creates a new asset of this type.
+     *
+     * @param assetLocation The location of the asset.
+     * @param assetName     The name of the asset file.
+     * @return A new asset of this type.
+     */
+    final def apply(assetLocation: Location, assetName: String): Asset.Absolute[AssetType] =
+      Asset.Absolute(assetLocation, assetName, this)
 
     /**
      * Attempts to create a new asset of this type.
@@ -129,7 +135,7 @@ object Asset {
      * @param string The string to parse.
      * @return A new asset of this type if one could be created.
      */
-    final def apply(string: String): Option[Asset[FileType]] = {
+    final def apply(string: String): Option[Asset[AssetType]] = {
 
       def split: (Path, String) = string lastIndexOf '/' match {
         case index if index > 0 => Path(string.substring(0, index)) -> string.substring(index + 1)
@@ -156,10 +162,7 @@ object Asset {
   case object Image extends Type {
 
     /* The asset type. */
-    override type FileType = Image
-
-    /* The name of this type. */
-    override val name: Name = Name("image").get
+    override type AssetType = Image
 
     /* The search prefix. */
     override val prefix: String = "images"
@@ -187,10 +190,7 @@ object Asset {
   case object Stylesheet extends Type {
 
     /* The asset type. */
-    override type FileType = Stylesheet
-
-    /* The name of this type. */
-    override val name: Name = Name("stylesheet").get
+    override type AssetType = Stylesheet
 
     /* The search prefix. */
     override val prefix: String = "css"
@@ -218,10 +218,7 @@ object Asset {
   case object Script extends Type {
 
     /* The asset type. */
-    override type FileType = Script
-
-    /* The name of this type. */
-    override val name: Name = Name("script").get
+    override type AssetType = Script
 
     /* The search prefix. */
     override val prefix: String = "js"

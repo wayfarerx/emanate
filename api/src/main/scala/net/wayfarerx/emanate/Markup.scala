@@ -330,14 +330,14 @@ object Markup {
     ) extends Link
 
     /**
-     * An internal link to another entity.
+     * A link to an entity.
      *
      * @param entity   The entity to link to.
      * @param fragment The optional fragment.
      * @param title    The optional title.
      * @param content  The content of this link.
      */
-    case class Internal(
+    case class ToEntity(
       entity: Entity[AnyRef],
       fragment: Option[String],
       title: Option[String],
@@ -345,14 +345,14 @@ object Markup {
     ) extends Link
 
     /**
-     * A direct link to a local asset.
+     * A link to an asset.
      *
      * @param asset   The asset to link to.
      * @param title   The optional title.
      * @param content The content of this link.
      */
-    case class Direct(
-      asset: Asset[_ <: Asset.Type],
+    case class ToAsset(
+      asset: Asset[Asset.Type],
       title: Option[String],
       content: Vector[Inline]
     ) extends Link

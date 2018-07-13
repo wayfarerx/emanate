@@ -22,7 +22,6 @@ package model
 import java.io.InputStream
 import java.nio.file.{Files, Path => JPath}
 
-import collection.immutable.ListSet
 import io.Codec
 
 import cats.effect.IO
@@ -35,22 +34,13 @@ import laika.tree.{Documents, Elements}
 /**
  * A utility for parsing markdown documents.
  */
-final class Parser(assetTypes: Asset.Type*) {
+final class Parser(implicit assetTypes: Asset.Types) {
 
   /** The implicit UTF-8 codec. */
   private implicit val codec: Codec = Codec.UTF8
 
   /** The laika parser to use. */
   private val parser = Parse as Markdown.strict
-
-  /** The set of all known asset types. */
-  private val allAssetTypes = ListSet(Asset.Image, Asset.Stylesheet, Asset.Script) ++ assetTypes
-
-  /** The index of asset types by name. */
-  private val assetTypesByName = allAssetTypes.toVector.map(t => t.name -> t).toMap
-
-  /** The index of asset types by extension. */
-  private val assetTypesByExtension = allAssetTypes.toVector.flatMap(t => t.extensions map (_ -> t)).toMap
 
   /**
    * Attempts to load the contents of a document from a stream.
@@ -109,8 +99,8 @@ final class Parser(assetTypes: Asset.Type*) {
     case Elements.Strong(content, _) =>
       readInlines(content) map Markup.Strong
     case Elements.Image(alt, Elements.URI(src, _), _, _, title, _) =>
-      Asset.Image(src).map(asset => IO.pure(Markup.Image(asset, title, Some(alt.trim) filterNot (_.isEmpty))))
-        .getOrElse(IO.raiseError(new IllegalArgumentException(s"Invalid image reference: $src.")))
+      Asset.Image(src).map(asset => IO.pure(Markup.Image(asset, title, Some(alt.trim) filterNot (_.isEmpty)))) getOrElse
+        IO.raiseError(new IllegalArgumentException(s"Invalid image reference: $src."))
     case Elements.ExternalLink(content, target, title, _) =>
       readInlines(content) flatMap (readLink(target, title, _))
     case _ =>
@@ -142,27 +132,24 @@ final class Parser(assetTypes: Asset.Type*) {
         IO.pure(Markup.Link.Local(local substring 1, title, content))
       case external if external.startsWith("//") | external.contains("://") =>
         IO.pure(Markup.Link.External(external, title, content))
-      case direct if direct contains ":" =>
-        val Array(assetType, assetName) = direct.split("""\:""", 2)
-        Name(assetType) flatMap assetTypesByName.get map { assets =>
-          Name(assetName) map (name => IO.pure(Markup.Link.Direct(assets(name), title, content))) getOrElse
-            IO.raiseError(new IllegalArgumentException(s"Invalid asset link name: $assetName."))
-        } getOrElse IO.raiseError(new IllegalArgumentException(s"Invalid asset link type: $assetType."))
-      case internal =>
-        val (entity, fragment) = internal lastIndexOf '#' match {
-          case index if index > 0 => internal.take(index - 1) -> Some(internal.drop(index + 1))
-          case _ => internal -> None
+      case toAsset if toAsset exists (c => c == '.' || c == ':') =>
+        Asset(toAsset) map (a => IO.pure(Markup.Link.ToAsset(a, title, content))) getOrElse
+          IO.raiseError(new IllegalArgumentException(s"Invalid asset link: $toAsset."))
+      case toEntity =>
+        val (entity, fragment) = toEntity lastIndexOf '#' match {
+          case index if index > 0 => toEntity.take(index) -> Some(toEntity drop index + 1)
+          case _ => toEntity -> None
         }
         entity match {
           case absolute if absolute startsWith "/" =>
             Location(Path(absolute)) map
-              (l => IO.pure(Markup.Link.Internal(Entity.Absolute[AnyRef](l), fragment, title, content))) getOrElse
+              (l => IO.pure(Markup.Link.ToEntity(Entity.Absolute[AnyRef](l), fragment, title, content))) getOrElse
               IO.raiseError(new IllegalArgumentException(s"Invalid link absolute path: $absolute."))
           case relative if relative contains "/" =>
-            IO.pure(Markup.Link.Internal(Entity.Relative(Path(relative)), fragment, title, content))
+            IO.pure(Markup.Link.ToEntity(Entity.Relative(Path(relative)), fragment, title, content))
           case named =>
             Name(named) map
-              (n => IO.pure(Markup.Link.Internal(Entity.Named(n), fragment, title, content))) getOrElse
+              (n => IO.pure(Markup.Link.ToEntity(Entity.Named(n), fragment, title, content))) getOrElse
               IO.raiseError(new IllegalArgumentException(s"Invalid link name: $named."))
         }
     }

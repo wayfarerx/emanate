@@ -290,7 +290,7 @@ object Asset {
     val empty: Types = Types(ListSet.empty[Type], Map.empty[Name, Type], Map.empty[String, Type])
 
     /** The default collection of asset types. */
-    implicit val default: Types = Types(Image, Stylesheet, Script)
+    val default: Types = Types(Image, Stylesheet, Script)
 
     /**
      * Creates a new index that includes the specified types.

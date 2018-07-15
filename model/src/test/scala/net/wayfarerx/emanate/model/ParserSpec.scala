@@ -19,20 +19,52 @@
 package net.wayfarerx.emanate
 package model
 
+import cats.effect.IO
+
 import org.scalatest._
 
 /**
  * Test case for the markdown parser.
  */
-class ParserSpec extends FlatSpec with Matchers {
+class ParserSpec extends FlatSpec with Matchers with EnvironmentSupport {
 
   behavior of "Parser"
 
   it should "parse a document" in {
+    import Markup._
 
-//    val doc = new Parser(Map())(getClass.getResourceAsStream("parser-test.md"))
-
-//    doc.unsafeRunSync()
+    val doc = IO(this.getClass.getResourceAsStream("parser-test.md")).bracket {
+      new Parser(environment) parse _
+    }(stream => IO(stream.close())).unsafeRunSync()
+    doc shouldBe Document(
+      Name("Test Page").get,
+      Vector(Text("This "), Strong(Vector(Text("describes"))), Text(" the test page. ")),
+      Some("thewayfarerx"),
+      Vector(Paragraph(Vector(Text("This is the main "), Emphasized(Vector(Text("content"))), Text(".")))),
+      Vector(
+        Section(2, Vector(Text("Section 1")), Vector(
+          List.Unordered(Vector(
+            List.Item(Vector(Paragraph(Vector(Text("an"))))),
+            List.Item(Vector(Paragraph(Vector(Text("unordered"))))),
+            List.Item(Vector(Paragraph(Vector(Text("list")))))
+          )),
+          BlockQuote(Vector(Paragraph(Vector(Text("and a blockquote")))))
+        ), Vector()),
+        Section(2, Vector(Text("Section 2")), Vector(
+          List.Ordered(Vector(
+            List.Item(Vector(Paragraph(Vector(Text("an"))))),
+            List.Item(Vector(Paragraph(Vector(Text("ordered"))))),
+            List.Item(Vector(Paragraph(Vector(Text("list")))))
+          )),
+          Paragraph(Vector(Code(Vector(Text("and some code")))))
+        ), Vector(
+          Section(3, Vector(Text("Section 2.1")), Vector(
+            Paragraph(Vector(Link.External("https://google.com", None, Vector(Text("A Link"))))),
+            Paragraph(Vector(Image(Asset.Image("image").get, None, Some("An image"))))
+          ), Vector())
+        ))
+      )
+    )
 
   }
 

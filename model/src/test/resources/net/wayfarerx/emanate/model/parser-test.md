@@ -1,8 +1,6 @@
 # Test Page
 
-This **describes** the test page.
-
-by wayfarerx
+This **describes** the test page. @thewayfarerx
 
 This is the main *content*.
 
@@ -12,8 +10,7 @@ This is the main *content*.
 - unordered
 - list
 
-> and a
-> blockquote
+> and a blockquote
 
 ## Section 2
 

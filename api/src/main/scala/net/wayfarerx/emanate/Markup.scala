@@ -54,7 +54,7 @@ object Markup {
   case class Document(
     name: Name,
     description: Vector[Inline],
-    author: Option[Name],
+    author: Option[String],
     content: Vector[Block],
     sections: Vector[Section]
   ) extends Structure {
@@ -65,7 +65,7 @@ object Markup {
     /* Return the stripped content. */
     override def strip: String =
       s"#$title\r\n\r\n" + description.map(_.strip).mkString + "\r\n\r\n" +
-        author.map("By " + _.display + "\r\n\r\n").getOrElse("") +
+        author.map("By " + _ + "\r\n\r\n").getOrElse("") +
         content.map(_.strip).mkString + sections.map(_.strip).mkString
 
   }

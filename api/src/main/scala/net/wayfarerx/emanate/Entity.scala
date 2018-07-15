@@ -46,6 +46,19 @@ sealed trait Entity[T <: AnyRef] {
 object Entity {
 
   /**
+   * Attempts to create a new entity from the specified string.
+   *
+   * @tparam T The expected type of the desired entity.
+   * @param string The string to parse.
+   * @return A new entity if one could be created.
+   */
+  def apply[T <: AnyRef : ClassTag](string: String): Option[Entity[T]] = string match {
+    case absolute if absolute startsWith "/" => Location(Path(absolute)) map Entity.Absolute[T]
+    case relative if relative contains "/" => Some(Entity.Relative[T](Path(relative)))
+    case named => Name(named) map Entity.Named[T]
+  }
+
+  /**
    * A reference to an entity by name.
    *
    * @tparam T The expected type of the desired entity.

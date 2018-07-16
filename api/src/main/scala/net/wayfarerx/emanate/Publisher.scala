@@ -1,5 +1,5 @@
 /*
- * Context.scala
+ * Publisher.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -21,14 +21,19 @@ package net.wayfarerx.emanate
 import cats.effect.IO
 
 /**
- * Description of the context that a task operates in.
+ * Defines how an entity is published to a site.
+ *
+ * @tparam T The type of entity being published.
  */
-trait Context {
+trait Publisher[-T <: AnyRef] {
 
-  def resolve[T <: Asset.Type](asset: Asset[T]): IO[Option[Asset.Resolved[T]]]
-
-  def resolve[T <: AnyRef](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
-
-  def load[T <: AnyRef](entity: Entity[T]): IO[Option[T]]
+  /**
+   * Attempts to publish an entity to a site.
+   *
+   * @param entity The entity to publish.
+   * @param ctx The context to publish in.
+   * @return The result of attempting to publish an entity to a site.
+   */
+  def publish(entity: T)(implicit ctx: Context): IO[String]
 
 }

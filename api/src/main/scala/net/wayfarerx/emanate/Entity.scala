@@ -18,7 +18,7 @@
 
 package net.wayfarerx.emanate
 
-import scala.reflect.ClassTag
+import reflect.ClassTag
 
 /**
  * Base class for references to entities.

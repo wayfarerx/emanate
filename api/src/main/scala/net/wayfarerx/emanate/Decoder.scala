@@ -1,5 +1,5 @@
 /*
- * Context.scala
+ * Decoder.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -21,14 +21,19 @@ package net.wayfarerx.emanate
 import cats.effect.IO
 
 /**
- * Description of the context that a task operates in.
+ * Defines how an entity is decoded from a document.
+ *
+ * @tparam T The type of entity being decoded.
  */
-trait Context {
+trait Decoder[+T <: AnyRef] {
 
-  def resolve[T <: Asset.Type](asset: Asset[T]): IO[Option[Asset.Resolved[T]]]
-
-  def resolve[T <: AnyRef](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
-
-  def load[T <: AnyRef](entity: Entity[T]): IO[Option[T]]
+  /**
+   * Attempts to decode an entity from a document.
+   *
+   * @param document The document to decode.
+   * @param ctx The context to decode in.
+   * @return The result of attempting to decode an entity from a document.
+   */
+  def decode(document: Markup.Document)(implicit ctx: Context): IO[T]
 
 }

@@ -132,22 +132,22 @@ object Asset {
     /**
      * Creates a new asset of this type.
      *
-     * @param assetPath The path of the asset.
-     * @param assetName The name of the asset file.
+     * @param assetPath     The path of the asset.
+     * @param assetFileName The name of the asset file.
      * @return A new asset of this type.
      */
-    final def apply(assetPath: Path, assetName: String): Asset.Relative[AssetType] =
-      Asset.Relative(assetPath, assetName, this)
+    final def apply(assetPath: Path, assetFileName: String): Asset.Relative[AssetType] =
+      Asset.Relative(assetPath, assetFileName, this)
 
     /**
      * Creates a new asset of this type.
      *
      * @param assetLocation The location of the asset.
-     * @param assetName     The name of the asset file.
+     * @param assetFileName The name of the asset file.
      * @return A new asset of this type.
      */
-    final def apply(assetLocation: Location, assetName: String): Asset.Absolute[AssetType] =
-      Asset.Absolute(assetLocation, assetName, this)
+    final def apply(assetLocation: Location, assetFileName: String): Asset.Absolute[AssetType] =
+      Asset.Absolute(assetLocation, assetFileName, this)
 
     /**
      * Attempts to create a new asset of this type.

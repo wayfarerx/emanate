@@ -1,5 +1,5 @@
 /*
- * Context.scala
+ * Author.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -18,17 +18,22 @@
 
 package net.wayfarerx.emanate
 
-import cats.effect.IO
-
 /**
- * Description of the context that a task operates in.
+ * An author that provides content to the site.
+ *
+ * @param name The name of this author.
+ * @param twitter The optional Twitter handle of this author.
  */
-trait Context {
+case class Author(
+  name: Name,
+  twitter: Option[String] = None,
+  email: Option[String] = None
+) {
 
-  def resolve[T <: Asset.Type](asset: Asset[T]): IO[Option[Asset.Resolved[T]]]
+  /** The ID of this author. */
+  def id: String = name.normal
 
-  def resolve[T <: AnyRef](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
-
-  def load[T <: AnyRef](entity: Entity[T]): IO[Option[T]]
+  /* Return the display name of this author. */
+  override def toString: String = name.display
 
 }

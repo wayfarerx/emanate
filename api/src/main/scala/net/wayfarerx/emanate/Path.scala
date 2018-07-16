@@ -172,19 +172,6 @@ object Path {
   val empty: Path = Path(Vector.empty)
 
   /**
-   * Parses a string into a sequence of elements.
-   *
-   * @param string The string to parse.
-   * @return The parsed sequence of elements.
-   */
-  private def stringToElements(string: String): Vector[Element] =
-    string.split("""[\\\/]+""").toVector flatMap {
-      case "." => Some(Current)
-      case ".." => Some(Parent)
-      case name => Name(name) map Child
-    }
-
-  /**
    * Parses a path from the specified string.
    *
    * @param string The string to parse the path from.
@@ -205,6 +192,19 @@ object Path {
   def apply(names: Name*): Path =
     if (names.isEmpty) empty
     else Path(names.toVector map Child)
+
+  /**
+   * Parses a string into a sequence of elements.
+   *
+   * @param string The string to parse.
+   * @return The parsed sequence of elements.
+   */
+  private def stringToElements(string: String): Vector[Element] =
+    string.split("""[\\\/]+""").toVector flatMap {
+      case "." => Some(Current)
+      case ".." => Some(Parent)
+      case name => Name(name) map Child
+    }
 
   /**
    * The base type for path elements.

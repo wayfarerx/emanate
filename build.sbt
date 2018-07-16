@@ -9,7 +9,7 @@ lazy val common = Seq(
 lazy val api = (project in file("api")).
   settings(
     common,
-    name := "emanate-api",
+    name := "oversite-api",
     libraryDependencies ++= Seq(
       catsEffect,
       scalaTest % Test
@@ -19,23 +19,23 @@ lazy val api = (project in file("api")).
 lazy val model = (project in file("model")).
   settings(
     common,
-    name := "emanate-model",
+    name := "oversite-model",
     libraryDependencies ++= Seq(
       laikaCore,
       scalaTest % Test
     )
   ).dependsOn(api)
 
-lazy val main = (project in file("main")).
+lazy val generator = (project in file("generator")).
   settings(
     common,
-    name := "emanate-main",
+    name := "oversite-generator",
     libraryDependencies += scalaTest % Test
   ).dependsOn(model)
 
 lazy val server = (project in file("server")).
   settings(
     common,
-    name := "emanate-server",
+    name := "oversite-server",
     libraryDependencies += scalaTest % Test
   ).dependsOn(model)

@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package net.wayfarerx.emanate
+package net.wayfarerx.oversite
 
 /**
  * Base type for all markup elements.

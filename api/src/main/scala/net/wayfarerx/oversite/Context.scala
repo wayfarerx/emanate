@@ -1,5 +1,5 @@
 /*
- * Site.scala
+ * Context.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -16,24 +16,19 @@
  * limitations under the License.
  */
 
-package net.wayfarerx.emanate
+package net.wayfarerx.oversite
+
+import cats.effect.IO
 
 /**
- * Describes an entire site.
+ * Description of the context that a task operates in.
  */
-trait Site {
+trait Context {
 
-  /** The name of the site. */
-  def name: Name
+  def resolve[T <: Asset.Type](asset: Asset[T]): IO[Option[Asset.Resolved[T]]]
 
-  /** The author of the site. */
-  def owner: Author
+  def resolve[T <: AnyRef](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
 
-  /** The base URL for the site. */
-  def baseUrl: String
-
-  /** The entry point for the scopes that describe this site. */
-  def scopes: Scope[_ <: AnyRef]
+  def load[T <: AnyRef](entity: Entity[T]): IO[Option[T]]
 
 }
-

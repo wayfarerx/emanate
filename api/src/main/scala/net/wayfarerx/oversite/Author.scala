@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package net.wayfarerx.emanate
+package net.wayfarerx.oversite
 
 /**
  * An author that provides content to the site.

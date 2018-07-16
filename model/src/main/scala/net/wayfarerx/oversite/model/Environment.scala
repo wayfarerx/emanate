@@ -16,10 +16,10 @@
  * limitations under the License.
  */
 
-package net.wayfarerx.emanate
+package net.wayfarerx.oversite
 package model
 
-import scala.concurrent.ExecutionContext
+import concurrent.ExecutionContext
 
 /**
  * The environment provided to the model.

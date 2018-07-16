@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package net.wayfarerx.emanate
+package net.wayfarerx.oversite
 
 /**
  * A path within the scope of a site.

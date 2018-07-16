@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-package net.wayfarerx.emanate
+package net.wayfarerx.oversite
 
 /**
  * Represents a name with a normalized version of its display value.

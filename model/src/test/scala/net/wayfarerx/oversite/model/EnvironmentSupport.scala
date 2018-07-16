@@ -1,5 +1,5 @@
 /*
- * Publisher.scala
+ * EnvironmentSupport.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -16,24 +16,28 @@
  * limitations under the License.
  */
 
-package net.wayfarerx.emanate
+package net.wayfarerx.oversite
+package model
 
-import cats.effect.IO
+import concurrent.ExecutionContext
 
 /**
- * Defines how an entity is published to a site.
- *
- * @tparam T The type of entity being published.
+ * Support for tests that require environments.
  */
-trait Publisher[-T <: AnyRef] {
+trait EnvironmentSupport {
 
-  /**
-   * Attempts to publish an entity to a site.
-   *
-   * @param entity The entity to publish.
-   * @param ctx The context to publish in.
-   * @return The result of attempting to publish an entity to a site.
-   */
-  def publish(entity: T)(implicit ctx: Context): IO[String]
+  /** The immediate mode executor. */
+  private val executor = new ExecutionContext {
+
+    override def execute(runnable: Runnable): Unit =
+      runnable.run()
+
+    override def reportFailure(cause: Throwable): Unit =
+      cause.printStackTrace()
+
+  }
+
+  /** The environment to use when testing. */
+  val environment = Environment(executor, executor, Asset.Types.default)
 
 }

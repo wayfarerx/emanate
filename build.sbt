@@ -39,3 +39,10 @@ lazy val server = (project in file("server")).
     name := "oversite-server",
     libraryDependencies += scalaTest % Test
   ).dependsOn(model)
+
+lazy val runtime = (project in file("plugin")).
+  settings(
+    common,
+    name := "sbt-oversite",
+    libraryDependencies += scalaTest % Test
+  )

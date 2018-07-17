@@ -16,6 +16,15 @@ lazy val api = (project in file("api")).
     )
   )
 
+lazy val util = (project in file("util")).
+  settings(
+    common,
+    name := "oversite-util",
+    libraryDependencies ++= Seq(
+      scalaTest % Test
+    )
+  ).dependsOn(api)
+
 lazy val model = (project in file("model")).
   settings(
     common,
@@ -40,7 +49,7 @@ lazy val server = (project in file("server")).
     libraryDependencies += scalaTest % Test
   ).dependsOn(model)
 
-lazy val runtime = (project in file("plugin")).
+lazy val plugin = (project in file("plugin")).
   settings(
     common,
     name := "sbt-oversite",

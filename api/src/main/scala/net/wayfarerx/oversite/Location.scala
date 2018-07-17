@@ -54,6 +54,9 @@ final class Location private(val path: Path) extends Product1[Path] {
  */
 object Location extends (Path => Option[Location]) {
 
+  /** The empty location. */
+  val empty = new Location(Path.empty)
+
   /**
    * Attempts to create a location.
    *

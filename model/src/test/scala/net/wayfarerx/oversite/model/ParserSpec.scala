@@ -34,7 +34,7 @@ class ParserSpec extends FlatSpec with Matchers with EnvironmentSupport {
     import Markup._
 
     val doc = IO(this.getClass.getResourceAsStream("parser-test.md")).bracket {
-      new Parser(environment) parse _
+      new Parser(environment, Asset.Types.default) parse _
     }(stream => IO(stream.close())).unsafeRunSync()
     doc shouldBe Document(
       Name("Test Page").get,

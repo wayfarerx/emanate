@@ -36,4 +36,12 @@ trait Decoder[+T <: AnyRef] {
    */
   def decode(document: Markup.Document)(implicit ctx: Context): IO[T]
 
+  /**
+   * A utility to rename an entity.
+   *
+   * @param name The default name to use.
+   * @return The resulting name of an entity.
+   */
+  def rename(name: Name): Name = name
+
 }

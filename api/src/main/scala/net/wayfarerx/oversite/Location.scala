@@ -27,6 +27,39 @@ final class Location private(val path: Path) extends Product1[Path] {
   lazy val parent: Option[Location] =
     Location(path.parent.normalized)
 
+  /**
+   * Extends this location.
+   *
+   * @param name The name to extend this location with.
+   * @return The extended location.
+   */
+  def :+ (name: Name): Location =
+    new Location(path :+ name)
+
+  /**
+   * Returns the longest prefix shared between this and that location.
+   *
+   * @param that The location to compare against.
+   * @return The longest prefix shared between this and that location.
+   */
+  def commonPrefixWith(that: Location): Path = {
+    val max = Math.min(path.elements.length, that.path.elements.length)
+    Path(path.elements.iterator.take(max).zip(that.path.elements.iterator.take(max)).takeWhile {
+      case (ours, theirs) => ours == theirs
+    }.map(_._1).toVector)
+  }
+
+  /**
+   * Calculates the distance to another location.
+   *
+   * @param that The location to measure the distance to.
+   * @return The distance to the specified location.
+   */
+  def distanceTo(that: Location): Int = {
+    val common = commonPrefixWith(that)
+    (path.elements.length - common.elements.length) - (that.path.elements.length - common.elements.length)
+  }
+
   /* Return the path. */
   override def _1: Path =
     path

@@ -18,15 +18,19 @@
 
 package net.wayfarerx.oversite
 
+import java.net.URI
+
 import reflect.ClassTag
 
 /**
  * A typed scope in a site.
  *
  * @tparam T The type of entities contained in this scope.
- * @param children The scope selectors for children of this scope.
+ * @param stylesheets The stylesheet collection for this scope.
+ * @param children    The scope selectors for children of this scope.
  */
 case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
+  stylesheets: Vector[Styles],
   children: Vector[(Scope.Select, Scope[_ <: AnyRef])]
 ) {
 
@@ -48,7 +52,7 @@ case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
   def apply(name: Name): Scope[_ <: AnyRef] = children collectFirst {
     case (Scope.Select.Matching(_name), child) if _name == name => child
     case (Scope.Select.All, child) => child
-  } getOrElse (if (children.isEmpty) this else copy(Vector.empty))
+  } getOrElse (if (stylesheets.isEmpty && children.isEmpty) this else copy(Vector.empty, Vector.empty))
 
 }
 
@@ -75,20 +79,35 @@ object Scope {
    * @return A new scope.
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](children: (Select, Scope[_ <: AnyRef])*): Scope[T] =
-    Scope[T](children.toVector)
+    Scope[T](Vector.empty, children.toVector)
 
   /**
-   * A link to an external resource.
+   * Creates a scope with stylesheets and all children using the specified child scope.
    *
-   * @param href        The location of the resource.
-   * @param integrity   The optional integrity hash.
-   * @param crossorigin The optional cross-origin setting.
+   * @tparam T The type of entities contained in the scope.
+   * @param stylesheets The stylesheet collection for the scope.
+   * @param children    The scope to use for all children.
+   * @return A new scope.
    */
-  case class Resource(
-    href: String,
-    integrity: Option[String] = None,
-    crossorigin: Option[String] = None
-  )
+  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+    stylesheets: Vector[Styles],
+    children: Scope[_ <: AnyRef]
+  ): Scope[T] =
+    Scope(stylesheets, Select.All -> children)
+
+  /**
+   * Creates a scope with stylesheets and the specified child scopes.
+   *
+   * @tparam T The type of entities contained in the scope.
+   * @param stylesheets The stylesheet collection for the scope.
+   * @param children    The scopes to selectively use for children.
+   * @return A new scope.
+   */
+  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+    stylesheets: Vector[Styles],
+    children: (Select, Scope[_ <: AnyRef])*
+  ): Scope[T] =
+    Scope[T](stylesheets, children.toVector)
 
   /**
    * Base type for scope selectors.

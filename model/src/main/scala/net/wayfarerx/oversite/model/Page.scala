@@ -19,11 +19,14 @@
 package net.wayfarerx.oversite
 package model
 
-import java.nio.file.{Path => JPath}
+import java.net.URL
 
+import io.{Codec, Source}
 import ref.SoftReference
-
 import cats.effect.IO
+
+import scala.reflect.ClassTag
+
 
 /**
  * Base class for a page in the tree of pages that make up a site.
@@ -32,18 +35,79 @@ import cats.effect.IO
  */
 sealed trait Page[T <: AnyRef] extends Context {
 
-  import Page._
+  /** The cached title. */
+  @volatile
+  private var cachedTitles: Option[Vector[Name]] = None
 
-  /** The cached entity value. */
+  /** The cached document. */
   @volatile
   private var cachedDocument: Option[SoftReference[Markup.Document]] = None
 
-  /** The cached entity value. */
+  /** The cached entity. */
   @volatile
   private var cachedEntity: Option[SoftReference[T]] = None
 
+  /** The titles of this page. */
+  final val titles: IO[Vector[Name]] =
+    IO(cachedTitles) flatMap (_ map IO.pure getOrElse {
+      for {
+        _ <- IO.shift(environment.blocking)
+        result <- IO(Source.fromURL(document)(Codec.UTF8)).bracket { source =>
+          IO(source.getLines.takeWhile(_ startsWith "#").map(_ substring 1).flatMap(Name(_)).toVector)
+        }(s => IO(s.close()))
+        _ <- IO.shift(environment.compute)
+      } yield {
+        cachedTitles = Some(result)
+        result
+      }
+    })
+
+  /** The main title of this page. */
+  final val title: IO[Option[Name]] =
+    titles map (_.headOption)
+
+  /**
+   * Attempts to load this page's document.
+   *
+   * @return The loaded document if available.
+   */
+  final val load: IO[Markup.Document] = IO(cachedDocument) flatMap (_ flatMap (_.get) map IO.pure getOrElse {
+    for (document <- new Parser(environment, assetTypes) parse document) yield {
+      cachedDocument = Some(SoftReference(document))
+      document
+    }
+  })
+
+  /** The description of this page. */
+  final val description: IO[Vector[Markup.Inline]] = load map (_.description)
+
+  /**
+   * Attempts to decode this page's entity.
+   *
+   * @return The decoded entity if available.
+   */
+  final val decode: IO[T] = IO(cachedEntity) flatMap {
+    _ flatMap (_.get) map IO.pure getOrElse {
+      for (entity <- load flatMap (scope.decoder.decode(_)(this))) yield {
+        cachedEntity = Some(SoftReference(entity))
+        entity
+      }
+    }
+  }
+
+  /**
+   * Attempts to publish this page's entity.
+   *
+   * @return The published entity if available.
+   */
+  final val publish: IO[String] =
+    decode flatMap (scope.publisher.publish(_)(this))
+
   /** The environment that contains this page. */
   def environment: Environment
+
+  /** The types of assets registered with the model. */
+  def assetTypes: Asset.Types
 
   /** The scope defined for this page. */
   def scope: Scope[T]
@@ -52,7 +116,7 @@ sealed trait Page[T <: AnyRef] extends Context {
   def name: Option[Name]
 
   /** The document that describes this page. */
-  def document: JPath
+  def document: URL
 
   /** The location of this page in the site. */
   def location: Location
@@ -63,53 +127,97 @@ sealed trait Page[T <: AnyRef] extends Context {
   /** The nested children of this page. */
   def children: IO[Vector[Page.Child[_ <: AnyRef]]]
 
-  /** The title of this page. */
-  final lazy val title: IO[Name] =
-    load() map (_.name)
+  /** The index of all pages in the containing site. */
+  def index: IO[Index]
 
-  /** The description of this page. */
-  final lazy val description: IO[Vector[Markup.Inline]] =
-    load() map (_.description)
+  /* Provide the stylesheets from this page and its parents. */
+  override def stylesheets: IO[Vector[Styles]] =
+    parent map (_.stylesheets map (_ ++ scope.stylesheets)) getOrElse IO.pure(scope.stylesheets)
+
+  /* Resolve the specified asset reference. */
+  override def resolve[U <: Asset.Type](asset: Asset[U]): IO[Option[Asset.Resolved[U]]] =
+    resolveAsset(asset) map (_ map { resolved =>
+      finish(resolved.location) map (Asset.Relative(_, resolved.fileName, resolved.assetType)) getOrElse resolved
+    })
+
+  /* Resolve the specified entity reference. */
+  override def resolve[U <: AnyRef : ClassTag](entity: Entity[U]): IO[Option[Entity.Resolved[U]]] =
+    resolveEntity(entity) map (_ map { resolved =>
+      finish(resolved.location) map Entity.Relative[U] getOrElse Entity.Absolute[U](resolved.location)
+    })
+
+  /* Load the specified entity reference. */
+  override def load[U <: AnyRef : ClassTag](entity: Entity[U]): IO[Option[U]] =
+    resolveEntity(entity) flatMap (_ map (p => p.decode map (Some(_))) getOrElse IO.pure(None))
 
   /**
-   * Attempts to load this page's document.
+   * Resolves assets into absolute assets by searching recursively up the site.
    *
-   * @return The loaded document if available.
+   * @tparam U The type of asset to resolve.
+   * @param asset The asset to resolve.
+   * @return The result of attempting to resolve the asset.
    */
-  final def load(): IO[Markup.Document] =
-    cachedDocument flatMap (_.get) map IO.pure getOrElse {
-      new Parser(environment) parse document map { doc =>
-        cachedDocument = Some(SoftReference(doc))
-        doc
+  private def resolveAsset[U <: Asset.Type](asset: Asset[U]): IO[Option[Asset.Absolute[U]]] = {
+
+    /* Search the specified location for each file in turn until one is found. */
+    def search(prefix: Location, remaining: Vector[String]): IO[Option[Asset.Absolute[U]]] =
+      remaining match {
+        case head +: tail =>
+          resolveAsset[U](Asset.Absolute(prefix, head, asset.assetType)) flatMap {
+            case None => search(prefix, tail)
+            case some => IO.pure(some)
+          }
+        case _ => IO.pure(None)
       }
+
+    asset match {
+      case Asset.Named(assetName, assetType) =>
+        Name(assetType.prefix) flatMap (n => Location(location.path :+ n)) map {
+          search(_, assetType.extensions.toVector map (assetName + "." + _))
+        } getOrElse IO.pure(None) flatMap {
+          case None => parent map (p => (p: Page[_]).resolveAsset[U](asset)) getOrElse IO.pure(None)
+          case some => IO.pure(some)
+        }
+      case Asset.Relative(path, fileName, tpe) =>
+        Location(location.path ++ path) map { l =>
+          resolveAsset[U](Asset.Absolute(l, fileName, tpe))
+        } getOrElse IO.pure(None)
+      case Asset.Absolute(location, fileName, tpe) =>
+        environment.find(s"${location.path}/$fileName") map
+          (_ map (_ => Asset.Absolute(location, fileName, tpe)))
     }
+  }
 
   /**
-   * Attempts to decode this page's entity.
+   * Resolves entities into absolute entities by searching the site index when necessary.
    *
-   * @return The decoded entity if available.
+   * @tparam U The type of entity to resolve.
+   * @param entity The entity to resolve.
+   * @return The result of attempting to resolve the entity.
    */
-  final def decode(): IO[T] =
-    cachedEntity flatMap (_.get) map IO.pure getOrElse {
-      load() flatMap (scope.decoder.decode(_)(this)) map { entity =>
-        cachedEntity = Some(SoftReference(entity))
-        entity
-      }
-    }
+  private def resolveEntity[U <: AnyRef : ClassTag](entity: Entity[U]): IO[Option[Page[U]]] = entity match {
+    case Entity.Named(name) =>
+      index map (_ (name, entity.assignableTo).sortBy(p => location.distanceTo(p.location)).headOption map
+        (_.asInstanceOf[Page[U]]))
+    case Entity.Relative(path) =>
+      Location(location.path ++ path) map (l => resolveEntity[U](Entity.Absolute(l))) getOrElse IO.pure(None)
+    case entity@Entity.Absolute(loc) =>
+      index map (_ (loc, entity.assignableTo) map (_.asInstanceOf[Page[U]]))
+  }
 
   /**
-   * Attempts to publish this page's entity.
+   * Finishes a resolved pointer by switching to relative paths that have the same or less number of tokens.
    *
-   * @return The published entity if available.
+   * @param result The absolute path to analyze.
+   * @return The more appropriate relative path if one exists.
    */
-  final def publish(): IO[String] =
-    decode() flatMap (scope.publisher.publish(_)(this))
-
-  override def resolve[U <: Asset.Type](asset: Asset[U]): IO[Option[Asset.Resolved[U]]] = ???
-
-  override def resolve[U <: AnyRef](entity: Entity[U]): IO[Option[Entity.Resolved[U]]] = ???
-
-  override def load[U <: AnyRef](entity: Entity[U]): IO[Option[U]] = ???
+  private def finish(result: Location): Option[Path] = {
+    val common = location.commonPrefixWith(result)
+    val prefix = location.path.elements.length - common.elements.length
+    if (prefix + (result.path.elements.length - common.elements.length) <= result.path.elements.length)
+      Some(Path(Vector.fill(prefix)(Path.Parent) ++ result.path.elements.drop(common.elements.length)))
+    else None
+  }
 
 }
 
@@ -125,8 +233,47 @@ object Page {
    */
   sealed trait Parent[T <: AnyRef] extends Page[T] {
 
+    /** The cached children. */
+    @volatile
+    private var cachedChildren: Option[Vector[Child[_ <: AnyRef]]] = None
+
     /* Collect the children. */
-    final override lazy val children: IO[Vector[Child[_ <: AnyRef]]] = ???
+    final override val children: IO[Vector[Child[_ <: AnyRef]]] = {
+
+      def search(found: IO[Vector[Child[_ <: AnyRef]]], remaining: Vector[String]): IO[Vector[Child[_ <: AnyRef]]] =
+        remaining match {
+          case head +: tail => found flatMap { previous =>
+            search((head match {
+              case path if path endsWith ".md" => environment.find(path) map { document =>
+                for {
+                  doc <- document
+                  name <- Name(path.substring(path.lastIndexOf('/') + 1, path.length - 3))
+                } yield {
+                  val s = scope(name)
+                  Leaf(s.decoder.rename(name), s, doc, this)
+                }
+              }
+              case path if path endsWith "/" => environment.find(s"$path/index.md") map { document =>
+                for {
+                  doc <- document
+                  name <- Name(path.substring(path.lastIndexOf('/', path.length - 2) + 1, path.length - 1))
+                } yield {
+                  val s = scope(name)
+                  Branch(s.decoder.rename(name), s, doc, this)
+                }
+              }
+              case _ => IO.pure(None)
+            }) map (_ map (previous :+ _) getOrElse previous), tail)
+          }
+          case _ => found
+        }
+
+      IO(cachedChildren) flatMap (_ map IO.pure getOrElse {
+        environment.list(location.toString) flatMap (search(IO.pure(Vector.empty), _)) map { c =>
+          cachedChildren = Some(c); c
+        }
+      })
+    }
 
   }
 
@@ -137,23 +284,30 @@ object Page {
    */
   sealed trait Child[T <: AnyRef] extends Page[T] {
 
+    /* Use the child name. */
+    final override lazy val name: Option[Name] = Some(childName)
+
+    /* Resolve against the parent's location. */
+    final override lazy val location: Location = parentPage.location :+ childName
+
+    /* Use the parent page. */
+    final override lazy val parent: Option[Parent[_ <: AnyRef]] = Some(parentPage)
+
+    /* Use the parent's environment. */
+
+    final override def environment: Environment = parentPage.environment
+
+    /* Use the parent's asset types. */
+    final override def assetTypes: Asset.Types = parentPage.assetTypes
+
+    /* Use the parent's index. */
+    final override def index: IO[Index] = parentPage.index
+
     /** The parent of this page. */
     def parentPage: Parent[_ <: AnyRef]
 
     /** The name of this child. */
     def childName: Name
-
-    /* Use the parent's environment. */
-    final override def environment: Environment = parentPage.environment
-
-    /* Use the child name. */
-    final override lazy val name: Option[Name] = Some(childName)
-
-    /* Resolve against the parent's location. */
-    final override lazy val location: Location = Location(parentPage.location.path :+ childName).get
-
-    /* Use the parent page. */
-    final override lazy val parent: Option[Parent[_ <: AnyRef]] = Some(parentPage)
 
   }
 
@@ -162,14 +316,24 @@ object Page {
    *
    * @tparam T The type of entity this page represents.
    * @param environment The environment to operate in.
-   * @param scope The root scope of the site.
-   * @param document The document that describes this page.
+   * @param assetTypes  The types of assets registered with the model.
+   * @param scope       The root scope of the site.
+   * @param document    The document that describes this page.
    */
   case class Root[T <: AnyRef](
     environment: Environment,
+    assetTypes: Asset.Types,
     scope: Scope[T],
-    document: JPath
+    document: URL
   ) extends Parent[T] {
+
+    /** The cached index. */
+    @volatile
+    private var cachedIndex: Option[Index] = None
+
+    /* Lazily generate the index. */
+    override val index: IO[Index] =
+      IO(cachedIndex) flatMap (_ map IO.pure getOrElse (Index(this) map { i => cachedIndex = Some(i); i }))
 
     /* The root has no name. */
     override def name: Option[Name] = None
@@ -186,15 +350,15 @@ object Page {
    * A child node in a site that can contain children.
    *
    * @tparam T The type of entity this page represents.
-   * @param childName The name of this child.
-   * @param scope The scope of this branch.
-   * @param document The document that describes this page.
+   * @param childName  The name of this child.
+   * @param scope      The scope of this branch.
+   * @param document   The document that describes this page.
    * @param parentPage The parent of this page.
    */
   case class Branch[T <: AnyRef](
     childName: Name,
     scope: Scope[T],
-    document: JPath,
+    document: URL,
     parentPage: Parent[_ <: AnyRef]
   ) extends Parent[T] with Child[T]
 
@@ -203,15 +367,15 @@ object Page {
    * A child node in a site that cannot contain children.
    *
    * @tparam T The type of entity this page represents.
-   * @param childName The name of this child.
-   * @param scope The scope of this branch.
-   * @param document The document that describes this page.
+   * @param childName  The name of this child.
+   * @param scope      The scope of this branch.
+   * @param document   The document that describes this page.
    * @param parentPage The parent of this page.
    */
   case class Leaf[T <: AnyRef](
     childName: Name,
     scope: Scope[T],
-    document: JPath,
+    document: URL,
     parentPage: Parent[_ <: AnyRef]
   ) extends Child[T] {
 

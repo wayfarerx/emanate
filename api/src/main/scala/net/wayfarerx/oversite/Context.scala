@@ -18,6 +18,8 @@
 
 package net.wayfarerx.oversite
 
+import reflect.ClassTag
+
 import cats.effect.IO
 
 /**
@@ -25,10 +27,34 @@ import cats.effect.IO
  */
 trait Context {
 
+  /** Attempts to return the stylesheets that are active in this context. */
+  def stylesheets: IO[Vector[Styles]]
+
+  /**
+   * Attempts to return the fully resolved form of the specified asset.
+   *
+   * @tparam T The type of asset to resolve.
+   * @param asset The asset to resolve.
+   * @return The result of attempting to resolve the specified asset.
+   */
   def resolve[T <: Asset.Type](asset: Asset[T]): IO[Option[Asset.Resolved[T]]]
 
-  def resolve[T <: AnyRef](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
+  /**
+   * Attempts to return the fully resolved form of the specified entity.
+   *
+   * @tparam T The type of entity to resolve.
+   * @param entity The entity to resolve.
+   * @return The result of attempting to resolve the specified entity.
+   */
+  def resolve[T <: AnyRef : ClassTag](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
 
-  def load[T <: AnyRef](entity: Entity[T]): IO[Option[T]]
+  /**
+   * Attempts to load the data associated with the specified entity.
+   *
+   * @tparam T The type of entity to load.
+   * @param entity The entity to load.
+   * @return The result of attempting to load the data for the specified entity.
+   */
+  def load[T <: AnyRef : ClassTag](entity: Entity[T]): IO[Option[T]]
 
 }

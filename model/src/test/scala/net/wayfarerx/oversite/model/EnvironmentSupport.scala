@@ -38,6 +38,6 @@ trait EnvironmentSupport {
   }
 
   /** The environment to use when testing. */
-  val environment = Environment(executor, executor, Asset.Types.default)
+  val environment = Environment(getClass.getClassLoader, executor, executor)
 
 }

@@ -35,5 +35,8 @@ trait Site {
   /** The entry point for the scopes that describe this site. */
   def scopes: Scope[_ <: AnyRef]
 
+  /** The types of assets registered with the model. */
+  def assetTypes: Asset.Types = Asset.Types.default
+
 }
 

@@ -46,7 +46,12 @@ lazy val server = (project in file("server")).
   settings(
     common,
     name := "oversite-server",
-    libraryDependencies += scalaTest % Test
+    libraryDependencies ++= Seq(
+      commonsIO,
+      jettyServer,
+      jettyServlet,
+      scalaTest % Test
+    )
   ).dependsOn(model)
 
 lazy val plugin = (project in file("plugin")).

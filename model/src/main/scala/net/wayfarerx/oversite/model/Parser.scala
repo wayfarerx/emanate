@@ -20,7 +20,7 @@ package net.wayfarerx.oversite
 package model
 
 import java.io.InputStream
-import java.nio.file.{Files, Path => JPath}
+import java.net.URL
 
 import io.Codec
 import util.control.NoStackTrace
@@ -36,8 +36,10 @@ import laika.tree.{Documents, Elements}
  * A utility for parsing markdown documents.
  *
  * @param environment The environment to parse in.
+ * @param assetTypes  The types of assets registered with the model.
+ *
  */
-final class Parser(environment: Environment) {
+final class Parser(environment: Environment, assetTypes: Asset.Types) {
 
   import Parser._
 
@@ -60,12 +62,9 @@ final class Parser(environment: Environment) {
    * @param path The path of the document to load.
    * @return The result of attempting to load a document from disk.
    */
-  def parse(path: JPath): IO[Markup.Document] = for {
+  def parse(path: URL): IO[Markup.Document] = for {
     _ <- IO.shift(environment.blocking)
-    document <- IO(Files.isRegularFile(path)) flatMap {
-      case true => IO(path.toFile) flatMap (f => IO(Laika.fromFile(f)))
-      case _ => Problem.raise(s"Not a regular file: $path")
-    }
+    document <- IO(path.openStream()).bracket(stream => IO(Laika.fromStream(stream)))(stream => IO(stream.close()))
     _ <- IO.shift(environment.compute)
     result <- readDocument(document)
   } yield result
@@ -246,7 +245,7 @@ final class Parser(environment: Environment) {
       case external if external.startsWith("//") | external.contains("://") =>
         IO.pure(Markup.Link.External(external, title, content))
       case toAsset if toAsset exists (c => c == '.' || c == ':') =>
-        Asset(toAsset)(environment.assetTypes) map (a => IO.pure(Markup.Link.ToAsset(a, title, content))) getOrElse
+        Asset(toAsset)(assetTypes) map (a => IO.pure(Markup.Link.ToAsset(a, title, content))) getOrElse
           Problem.raise(s"Invalid asset link: $toAsset.")
       case toEntity =>
         val (entity, fragment) = toEntity lastIndexOf '#' match {

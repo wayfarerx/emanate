@@ -1,6 +1,6 @@
 # Test Page
 
-This **describes** the test page. @thewayfarerx
+This **describes** the test page. @wayfarerx
 
 This is the main *content*.
 

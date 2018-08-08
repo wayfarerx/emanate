@@ -29,9 +29,6 @@ trait Site {
   /** The author of the site. */
   def owner: Author
 
-  /** The base URL for the site. */
-  def baseUrl: String
-
   /** The entry point for the scopes that describe this site. */
   def scopes: Scope[_ <: AnyRef]
 

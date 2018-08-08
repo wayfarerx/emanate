@@ -101,7 +101,7 @@ final class Parser(environment: Environment, assetTypes: Asset.Types) {
             case dd =>
               (None: Option[String]) -> dd
           }
-          Markup.Document(n, d, a, sr._1.content, sr._1.sections)
+          Markup.Document(n, d, a flatMap(Name(_)) map (Author(_)), sr._1.content, sr._1.sections)
         }
       case invalid =>
         Problem.raise(s"Invalid document markup: $invalid.")

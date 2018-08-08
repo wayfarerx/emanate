@@ -39,7 +39,7 @@ class ParserSpec extends FlatSpec with Matchers with EnvironmentSupport {
     doc shouldBe Document(
       Name("Test Page").get,
       Vector(Text("This "), Strong(Vector(Text("describes"))), Text(" the test page. ")),
-      Some("thewayfarerx"),
+      Some(Author(Name("wayfarerx").get)),
       Vector(Paragraph(Vector(Text("This is the main "), Emphasized(Vector(Text("content"))), Text(".")))),
       Vector(
         Section(2, Vector(Text("Section 1")), Vector(

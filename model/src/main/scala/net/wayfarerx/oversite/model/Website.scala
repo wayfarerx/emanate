@@ -48,9 +48,10 @@ object Website {
    */
   def apply(className: String)(implicit environment: Environment): IO[Website] = for {
     site <- IO(environment.classLoader.loadClass(className).newInstance.asInstanceOf[Site])
+    authors <- Authors(environment, "authors.txt")
     website <- environment.find("index.md") flatMap {
       case Some(rootDocument) => IO.pure(Website(environment, site,
-        Page.Root(environment, site.assetTypes, site.scopes, rootDocument)))
+        Page.Root(environment, authors, site.assetTypes, site.scopes, rootDocument)))
       case None => IO.raiseError(new IllegalArgumentException("Root index.md not found."))
     }
   } yield website

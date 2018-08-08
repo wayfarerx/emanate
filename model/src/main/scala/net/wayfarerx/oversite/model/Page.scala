@@ -52,7 +52,7 @@ sealed trait Page[T <: AnyRef] extends Context {
     IO(cachedTitles) flatMap (_ map IO.pure getOrElse {
       for {
         _ <- IO.shift(environment.blocking)
-        result <- IO(Source.fromURL(document)(Codec.UTF8)).bracket { source =>
+        result <- IO(Source.fromURL(resource)(Codec.UTF8)).bracket { source =>
           IO(source.getLines.takeWhile(_ startsWith "#").map(_ substring 1).flatMap(Name(_)).toVector)
         }(s => IO(s.close()))
         _ <- IO.shift(environment.compute)
@@ -71,29 +71,33 @@ sealed trait Page[T <: AnyRef] extends Context {
    *
    * @return The loaded document if available.
    */
-  final val load: IO[Markup.Document] = IO(cachedDocument) flatMap (_ flatMap (_.get) map IO.pure getOrElse {
-    for (document <- new Parser(environment, assetTypes) parse document) yield {
-      cachedDocument = Some(SoftReference(document))
-      document
-    }
-  })
+  final val document: IO[Markup.Document] =
+    IO(cachedDocument) flatMap (_ flatMap (_.get) map IO.pure getOrElse {
+      for {
+        raw <- new Parser(environment, assetTypes) parse resource
+        resolved <- new Resolver(this) resolve raw
+      } yield {
+        cachedDocument = Some(SoftReference(resolved))
+        resolved
+      }
+    })
 
   /** The description of this page. */
-  final val description: IO[Vector[Markup.Inline]] = load map (_.description)
+  final val description: IO[Vector[Markup.Inline]] =
+    document map (_.description)
 
   /**
    * Attempts to decode this page's entity.
    *
    * @return The decoded entity if available.
    */
-  final val decode: IO[T] = IO(cachedEntity) flatMap {
-    _ flatMap (_.get) map IO.pure getOrElse {
-      for (entity <- load flatMap (scope.decoder.decode(_)(this))) yield {
+  final val entity: IO[T] =
+    IO(cachedEntity) flatMap (_ flatMap (_.get) map IO.pure getOrElse {
+      for (entity <- document flatMap (scope.decoder.decode(_)(this))) yield {
         cachedEntity = Some(SoftReference(entity))
         entity
       }
-    }
-  }
+    })
 
   /**
    * Attempts to publish this page's entity.
@@ -101,10 +105,13 @@ sealed trait Page[T <: AnyRef] extends Context {
    * @return The published entity if available.
    */
   final val publish: IO[String] =
-    decode flatMap (scope.publisher.publish(_)(this))
+    entity flatMap (scope.publisher.publish(_)(this))
 
   /** The environment that contains this page. */
   def environment: Environment
+
+  /** The authors registered with the model. */
+  def authors: Authors
 
   /** The types of assets registered with the model. */
   def assetTypes: Asset.Types
@@ -115,11 +122,8 @@ sealed trait Page[T <: AnyRef] extends Context {
   /** The name of this page if it has one. */
   def name: Option[Name]
 
-  /** The document that describes this page. */
-  def document: URL
-
-  /** The location of this page in the site. */
-  def location: Location
+  /** The resource that describes this page. */
+  def resource: URL
 
   /** The parent page if one exists. */
   def parent: Option[Page.Parent[_ <: AnyRef]]
@@ -133,6 +137,10 @@ sealed trait Page[T <: AnyRef] extends Context {
   /* Provide the stylesheets from this page and its parents. */
   override def stylesheets: IO[Vector[Styles]] =
     parent map (_.stylesheets map (_ ++ scope.stylesheets)) getOrElse IO.pure(scope.stylesheets)
+
+  /* Resolve the specified author reference. */
+  override def resolve(author: Author): IO[Option[Author]] =
+    IO.pure(authors(author.name))
 
   /* Resolve the specified asset reference. */
   override def resolve[U <: Asset.Type](asset: Asset[U]): IO[Option[Asset.Resolved[U]]] =
@@ -148,7 +156,7 @@ sealed trait Page[T <: AnyRef] extends Context {
 
   /* Load the specified entity reference. */
   override def load[U <: AnyRef : ClassTag](entity: Entity[U]): IO[Option[U]] =
-    resolveEntity(entity) flatMap (_ map (p => p.decode map (Some(_))) getOrElse IO.pure(None))
+    resolveEntity(entity) flatMap (_ map (p => p.entity map (Some(_))) getOrElse IO.pure(None))
 
   /**
    * Resolves assets into absolute assets by searching recursively up the site.
@@ -294,8 +302,10 @@ object Page {
     final override lazy val parent: Option[Parent[_ <: AnyRef]] = Some(parentPage)
 
     /* Use the parent's environment. */
-
     final override def environment: Environment = parentPage.environment
+
+    /* Use the parent's authors. */
+    final override def authors: Authors = parentPage.authors
 
     /* Use the parent's asset types. */
     final override def assetTypes: Asset.Types = parentPage.assetTypes
@@ -316,15 +326,17 @@ object Page {
    *
    * @tparam T The type of entity this page represents.
    * @param environment The environment to operate in.
+   * @param authors     The authors registered with the model.
    * @param assetTypes  The types of assets registered with the model.
    * @param scope       The root scope of the site.
-   * @param document    The document that describes this page.
+   * @param resource    The document that describes this page.
    */
   case class Root[T <: AnyRef](
     environment: Environment,
+    authors: Authors,
     assetTypes: Asset.Types,
     scope: Scope[T],
-    document: URL
+    resource: URL
   ) extends Parent[T] {
 
     /** The cached index. */
@@ -352,13 +364,13 @@ object Page {
    * @tparam T The type of entity this page represents.
    * @param childName  The name of this child.
    * @param scope      The scope of this branch.
-   * @param document   The document that describes this page.
+   * @param resource   The document that describes this page.
    * @param parentPage The parent of this page.
    */
   case class Branch[T <: AnyRef](
     childName: Name,
     scope: Scope[T],
-    document: URL,
+    resource: URL,
     parentPage: Parent[_ <: AnyRef]
   ) extends Parent[T] with Child[T]
 
@@ -369,13 +381,13 @@ object Page {
    * @tparam T The type of entity this page represents.
    * @param childName  The name of this child.
    * @param scope      The scope of this branch.
-   * @param document   The document that describes this page.
+   * @param resource   The document that describes this page.
    * @param parentPage The parent of this page.
    */
   case class Leaf[T <: AnyRef](
     childName: Name,
     scope: Scope[T],
-    document: URL,
+    resource: URL,
     parentPage: Parent[_ <: AnyRef]
   ) extends Child[T] {
 

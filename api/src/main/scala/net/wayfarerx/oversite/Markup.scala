@@ -54,7 +54,7 @@ object Markup {
   case class Document(
     name: Name,
     description: Vector[Inline],
-    author: Option[String],
+    author: Option[Author],
     content: Vector[Block],
     sections: Vector[Section]
   ) extends Structure {
@@ -102,6 +102,17 @@ object Markup {
   sealed trait Block extends Markup
 
   /**
+   * A horizontal rule.
+   */
+  case object HorizontalRule extends Block {
+
+    /* Return the stripped content. */
+    override def strip: String =
+      "---\r\n\r\n"
+
+  }
+
+  /**
    * A block of inline markup.
    *
    * @param content The inline content.
@@ -143,17 +154,6 @@ object Markup {
     /* Return the stripped content. */
     override def strip: String =
       content.map(_.strip).mkString
-
-  }
-
-  /**
-   * A horizontal rule.
-   */
-  case object HorizontalRule extends Block {
-
-    /* Return the stripped content. */
-    override def strip: String =
-      "---\r\n\r\n"
 
   }
 

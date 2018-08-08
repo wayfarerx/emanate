@@ -27,8 +27,19 @@ import cats.effect.IO
  */
 trait Context {
 
+  /** Returns the current location in the site. */
+  def location: Location
+
   /** Attempts to return the stylesheets that are active in this context. */
   def stylesheets: IO[Vector[Styles]]
+
+  /**
+   * Attempts to return the fully resolved form of the specified author.
+   *
+   * @param author The author to resolve.
+   * @return The result of attempting to resolve the specified author.
+   */
+  def resolve(author: Author): IO[Option[Author]]
 
   /**
    * Attempts to return the fully resolved form of the specified asset.

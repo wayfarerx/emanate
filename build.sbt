@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.1.2-SNAPSHOT"
+  version := "0.1.3-SNAPSHOT"
 )
 
 lazy val api = (project in file("api")).

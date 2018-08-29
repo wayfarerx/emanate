@@ -27,6 +27,9 @@ import cats.effect.IO
  */
 trait Context {
 
+  /** Returns the site that contains this location. */
+  def site: Site
+
   /** Returns the current location in the site. */
   def location: Location
 
@@ -58,6 +61,14 @@ trait Context {
    * @return The result of attempting to resolve the specified entity.
    */
   def resolve[T <: AnyRef : ClassTag](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
+
+  /**
+   * Attempts to load the alt-text for a specific image.
+   *
+   * @param image The image to load the alt-text for.
+   * @return The result of attempting to load the alt-text for a specific image.
+   */
+  def alt(image: Asset.Resolved[Asset.Image]): IO[Option[String]]
 
   /**
    * Attempts to load the data associated with the specified entity.

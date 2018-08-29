@@ -20,12 +20,17 @@ package net.wayfarerx.oversite
 package model
 
 import java.net.URL
+import java.util.Properties
+import java.util.concurrent.ConcurrentHashMap
 
+import collection.JavaConverters._
 import io.{Codec, Source}
 import ref.SoftReference
+import reflect.ClassTag
+
 import cats.effect.IO
 
-import scala.reflect.ClassTag
+import net.wayfarerx.oversite.Asset.Image
 
 
 /**
@@ -75,7 +80,7 @@ sealed trait Page[T <: AnyRef] extends Context {
     IO(cachedDocument) flatMap (_ flatMap (_.get) map IO.pure getOrElse {
       for {
         raw <- new Parser(environment, assetTypes) parse resource
-        resolved <- new Resolver(this) resolve raw
+        resolved <- new Resolver(site, this) resolve raw
       } yield {
         cachedDocument = Some(SoftReference(resolved))
         resolved
@@ -301,6 +306,9 @@ object Page {
     /* Use the parent page. */
     final override lazy val parent: Option[Parent[_ <: AnyRef]] = Some(parentPage)
 
+    /* Use the parent site. */
+    final override def site: Site = parentPage.site
+
     /* Use the parent's environment. */
     final override def environment: Environment = parentPage.environment
 
@@ -312,6 +320,13 @@ object Page {
 
     /* Use the parent's index. */
     final override def index: IO[Index] = parentPage.index
+
+    /* Use the parent's support. */
+    final override def alt(image: Asset.Resolved[Asset.Image]): IO[Option[String]] =
+      parentPage.alt(image match {
+        case relative@Asset.Relative(path, _, _) => relative.copy(path = childName +: path)
+        case absolute => absolute
+      })
 
     /** The parent of this page. */
     def parentPage: Parent[_ <: AnyRef]
@@ -325,6 +340,7 @@ object Page {
    * The root node of a site.
    *
    * @tparam T The type of entity this page represents.
+   * @param site        The site that contains this page.
    * @param environment The environment to operate in.
    * @param authors     The authors registered with the model.
    * @param assetTypes  The types of assets registered with the model.
@@ -332,6 +348,7 @@ object Page {
    * @param resource    The document that describes this page.
    */
   case class Root[T <: AnyRef](
+    site: Site,
     environment: Environment,
     authors: Authors,
     assetTypes: Asset.Types,
@@ -342,6 +359,9 @@ object Page {
     /** The cached index. */
     @volatile
     private var cachedIndex: Option[Index] = None
+
+    /** The cached alt text. */
+    private val cachedAltText = new ConcurrentHashMap[Location, Map[String, String]]()
 
     /* Lazily generate the index. */
     override val index: IO[Index] =
@@ -355,6 +375,35 @@ object Page {
 
     /* The root has no parent. */
     override def parent: Option[Parent[_ <: AnyRef]] = None
+
+    /* Load the cached alt text. */
+    override def alt(image: Asset.Resolved[Image]): IO[Option[String]] = {
+
+      /* Recursively search for the specified name by removing extensions one at a time. */
+      @annotation.tailrec
+      def find(entries: Map[String, String], name: String): Option[String] = entries get name match {
+        case None => name lastIndexOf '.' match {
+          case i if i >= 0 => find(entries, name.substring(0, i))
+          case _ => None
+        }
+        case some => some
+      }
+
+      (image match {
+        case Asset.Relative(path, _, _) => Location(path)
+        case Asset.Absolute(location, _, _) => Some(location)
+      }) map { location =>
+        Option(cachedAltText get location) map IO.pure getOrElse {
+          val props = new Properties
+          for {
+            resource <- environment.find(s"${location}alt.properties")
+            data <- IO(resource map (_.openStream)).bracket { stream =>
+              IO(stream foreach props.load) map (_ => props.asScala.toMap)
+            }(s => IO(s foreach (_.close())))
+          } yield Option(cachedAltText.putIfAbsent(location, data)) getOrElse data
+        } map (e => if (e.isEmpty) None else find(e, image.fileName))
+      } getOrElse IO.pure(None)
+    }
 
   }
 

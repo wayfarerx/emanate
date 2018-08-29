@@ -27,7 +27,7 @@ import cats.effect.IO
  * @param context The context to operate in.
  *
  */
-final class Resolver(context: Context) {
+final class Resolver(site: Site, context: Context) {
 
   /**
    * Attempts to resolve all authors, assets, and entities in the specified document.
@@ -37,7 +37,7 @@ final class Resolver(context: Context) {
    */
   def resolve(document: Markup.Document): IO[Markup.Document] = for {
     description <- resolveInlines(document.description)
-    author <- document.author map (a => resolve(a) map (Some(_))) getOrElse IO.pure(None)
+    author <- document.author map (a => resolve(a) map (Some(_))) getOrElse resolve(Author(site.owner)).map(Some(_))
     content <- resolveBlocks(document.content)
     sections <- resolveSections(document.sections)
   } yield document.copy(description = description, author = author, content = content, sections = sections)

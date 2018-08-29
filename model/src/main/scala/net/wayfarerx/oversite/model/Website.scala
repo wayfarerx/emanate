@@ -26,11 +26,13 @@ import cats.effect.IO
  *
  * @param environment The environment this website operates in.
  * @param site        The description of this website.
+ * @param owner       The author that owns this site.
  * @param root        The root of this website.
  */
 case class Website private(
   environment: Environment,
   site: Site,
+  owner: Author,
   root: Page.Root[_ <: AnyRef]
 )
 
@@ -49,11 +51,12 @@ object Website {
   def apply(className: String)(implicit environment: Environment): IO[Website] = for {
     site <- IO(environment.classLoader.loadClass(className).newInstance.asInstanceOf[Site])
     authors <- Authors(environment, "authors.txt")
-    website <- environment.find("index.md") flatMap {
-      case Some(rootDocument) => IO.pure(Website(environment, site,
-        Page.Root(environment, authors, site.assetTypes, site.scopes, rootDocument)))
-      case None => IO.raiseError(new IllegalArgumentException("Root index.md not found."))
-    }
+    owner <- authors(site.owner) map IO.pure getOrElse
+      IO.raiseError(new IllegalArgumentException(s"Owner ${site.owner} not found"))
+    resource <- environment.find("index.md")
+    website <- resource.map { r =>
+      IO.pure(Website(environment, site, owner, Page.Root(site, environment, authors, site.assetTypes, site.scopes, r)))
+    } getOrElse IO.raiseError(new IllegalArgumentException("Root index.md not found"))
   } yield website
 
 }

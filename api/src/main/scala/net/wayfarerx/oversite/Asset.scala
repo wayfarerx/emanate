@@ -80,25 +80,45 @@ object Asset {
    *
    * @tparam T The type of asset.
    */
-  sealed trait Resolved[T <: Asset.Type] extends Asset[T]
+  sealed trait Resolved[T <: Asset.Type] extends Asset[T] {
+
+    /** The prefix  of the resolved asset.*/
+    def prefix: String
+
+    /** The file name of the resolved asset.*/
+    def fileName: String
+
+  }
 
   /**
    * A reference to an asset by relative path.
    *
    * @tparam T The type of asset.
    * @param path      The path to the desired asset.
+   * @param fileName  The file name of the desired asset.
    * @param assetType The type of the asset.
    */
-  case class Relative[T <: Asset.Type](path: Path, fileName: String, assetType: T) extends Resolved[T]
+  case class Relative[T <: Asset.Type](path: Path, fileName: String, assetType: T) extends Resolved[T] {
+
+    /* Use a relative prefix. */
+    override def prefix: String = path.toString + "/"
+
+  }
 
   /**
    * A reference to an asset by absolute path.
    *
    * @tparam T The type of asset.
    * @param location  The location of the desired asset.
+   * @param fileName  The file name of the desired asset.
    * @param assetType The type of the asset.
    */
-  case class Absolute[T <: Asset.Type](location: Location, fileName: String, assetType: T) extends Resolved[T]
+  case class Absolute[T <: Asset.Type](location: Location, fileName: String, assetType: T) extends Resolved[T] {
+
+    /* Use an absolute prefix. */
+    override def prefix: String = location.toString
+
+  }
 
   /**
    * Base type for all asset types.

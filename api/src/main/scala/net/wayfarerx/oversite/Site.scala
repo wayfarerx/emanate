@@ -27,13 +27,16 @@ trait Site {
   def name: Name
 
   /** The author of the site. */
-  def owner: Author
+  def owner: Name
 
   /** The entry point for the scopes that describe this site. */
   def scopes: Scope[_ <: AnyRef]
 
   /** The types of assets registered with the model. */
   def assetTypes: Asset.Types = Asset.Types.default
+
+  /** The base URL to append absolute paths to. */
+  def baseUrl: String
 
 }
 

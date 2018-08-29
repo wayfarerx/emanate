@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.1.3-SNAPSHOT"
+  version := "0.1.4"
 )
 
 lazy val api = (project in file("api")).
@@ -11,17 +11,19 @@ lazy val api = (project in file("api")).
     common,
     name := "oversite-api",
     libraryDependencies ++= Seq(
-      catsEffect,
-      scalaTest % Test
+      CatsEffect,
+      ScalaTest % Test
     )
   )
 
-lazy val util = (project in file("util")).
+lazy val utils = (project in file("utils")).
   settings(
     common,
-    name := "oversite-util",
+    name := "oversite-utils",
     libraryDependencies ++= Seq(
-      scalaTest % Test
+      ScalaTags,
+      ScalaCss,
+      ScalaTest % Test
     )
   ).dependsOn(api)
 
@@ -30,8 +32,8 @@ lazy val model = (project in file("model")).
     common,
     name := "oversite-model",
     libraryDependencies ++= Seq(
-      laikaCore,
-      scalaTest % Test
+      LaikaCore,
+      ScalaTest % Test
     )
   ).dependsOn(api)
 
@@ -39,7 +41,7 @@ lazy val generator = (project in file("generator")).
   settings(
     common,
     name := "oversite-generator",
-    libraryDependencies += scalaTest % Test
+    libraryDependencies += ScalaTest % Test
   ).dependsOn(model)
 
 lazy val server = (project in file("server")).
@@ -47,10 +49,10 @@ lazy val server = (project in file("server")).
     common,
     name := "oversite-server",
     libraryDependencies ++= Seq(
-      commonsIO,
-      jettyServer,
-      jettyServlet,
-      scalaTest % Test
+      CommonsIO,
+      JettyServer,
+      JettyServlet,
+      ScalaTest % Test
     )
   ).dependsOn(model)
 
@@ -58,5 +60,5 @@ lazy val plugin = (project in file("plugin")).
   settings(
     common,
     name := "sbt-oversite",
-    libraryDependencies += scalaTest % Test
+    libraryDependencies += ScalaTest % Test
   )

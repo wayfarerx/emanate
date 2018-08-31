@@ -88,6 +88,9 @@ object Asset {
     /** The file name of the resolved asset.*/
     def fileName: String
 
+    /** The hypertext reference to the resolved asset.*/
+    final def href: String = prefix + fileName
+
   }
 
   /**

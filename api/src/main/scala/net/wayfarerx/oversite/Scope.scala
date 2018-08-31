@@ -68,7 +68,9 @@ object Scope {
    * @param children The scope to use for all children.
    * @return A new scope.
    */
-  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](children: Scope[_ <: AnyRef]): Scope[T] =
+  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+    children: Scope[_ <: AnyRef]
+  ): Scope[T] =
     Scope(Select.All -> children)
 
   /**
@@ -78,8 +80,10 @@ object Scope {
    * @param children The scopes to selectively use for children.
    * @return A new scope.
    */
-  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](children: (Select, Scope[_ <: AnyRef])*): Scope[T] =
-    Scope[T](Vector.empty, children.toVector)
+  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+    children: (Select, Scope[_ <: AnyRef])*
+  ): Scope[T] =
+    Scope(Vector.empty, children.toVector)
 
   /**
    * Creates a scope with stylesheets and all children using the specified child scope.
@@ -107,7 +111,7 @@ object Scope {
     stylesheets: Vector[Styles],
     children: (Select, Scope[_ <: AnyRef])*
   ): Scope[T] =
-    Scope[T](stylesheets, children.toVector)
+    Scope(stylesheets, children.toVector)
 
   /**
    * Base type for scope selectors.

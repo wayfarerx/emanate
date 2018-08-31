@@ -18,6 +18,8 @@
 
 package net.wayfarerx.oversite
 
+import collection.immutable.ListMap
+
 /**
  * Describes an entire site.
  */
@@ -29,14 +31,14 @@ trait Site {
   /** The author of the site. */
   def owner: Name
 
+  /** The base URL to append absolute paths to. */
+  def baseUrl: String
+
   /** The entry point for the scopes that describe this site. */
   def scopes: Scope[_ <: AnyRef]
 
   /** The types of assets registered with the model. */
   def assetTypes: Asset.Types = Asset.Types.default
-
-  /** The base URL to append absolute paths to. */
-  def baseUrl: String
 
 }
 

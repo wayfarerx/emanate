@@ -89,7 +89,7 @@ sealed trait Page[T <: AnyRef] extends Context {
 
   /** The description of this page. */
   final val description: IO[Vector[Markup.Inline]] =
-    document map (_.description)
+    document map (_.descriptions)
 
   /**
    * Attempts to decode this page's entity.

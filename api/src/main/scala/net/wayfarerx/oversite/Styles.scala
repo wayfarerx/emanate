@@ -33,7 +33,7 @@ object Styles {
   /**
    * A stylesheet that can be generated on demand.
    *
-   * @param href The virtual location of the stylesheet in the site.
+   * @param href     The virtual location of the stylesheet in the site.
    * @param generate The function that generates the stylesheet.
    */
   case class Generated(href: String, generate: () => String) extends Styles
@@ -48,8 +48,10 @@ object Styles {
   /**
    * A stylesheet that is stored outside the site.
    *
-   * @param uri The URI that identifies the external stylesheet.
+   * @param href        The URI that identifies the external stylesheet.
+   * @param integrity   The assertion about the stylesheet's integrity.
+   * @param crossorigin The crossorigin configuration.
    */
-  case class External(uri: URI) extends Styles
+  case class Explicit(href: String, integrity: Option[String] = None, crossorigin: Option[String] = None) extends Styles
 
 }

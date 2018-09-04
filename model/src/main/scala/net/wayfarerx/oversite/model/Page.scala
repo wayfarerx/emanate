@@ -56,11 +56,9 @@ sealed trait Page[T <: AnyRef] extends Context {
   final val titles: IO[Vector[Name]] =
     IO(cachedTitles) flatMap (_ map IO.pure getOrElse {
       for {
-        _ <- IO.shift(environment.blocking)
         result <- IO(Source.fromURL(resource)(Codec.UTF8)).bracket { source =>
           IO(source.getLines.takeWhile(_ startsWith "#").map(_ substring 1).flatMap(Name(_)).toVector)
         }(s => IO(s.close()))
-        _ <- IO.shift(environment.compute)
       } yield {
         cachedTitles = Some(result)
         result
@@ -89,7 +87,7 @@ sealed trait Page[T <: AnyRef] extends Context {
 
   /** The description of this page. */
   final val description: IO[Vector[Markup.Inline]] =
-    document map (_.descriptions)
+    document map (_.description)
 
   /**
    * Attempts to decode this page's entity.

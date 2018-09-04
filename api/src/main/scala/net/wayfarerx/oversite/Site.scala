@@ -18,8 +18,6 @@
 
 package net.wayfarerx.oversite
 
-import collection.immutable.ListMap
-
 /**
  * Describes an entire site.
  */
@@ -39,6 +37,29 @@ trait Site {
 
   /** The types of assets registered with the model. */
   def assetTypes: Asset.Types = Asset.Types.default
+
+  /**
+   * Return the scope at the specified location.
+   *
+   * @param location The location of the scope to return.
+   * @return The scope at the specified location.
+   */
+  final def find(location: Vector[String]): Scope[_ <: AnyRef] = {
+
+    @annotation.tailrec
+    def search(scope: Scope[_ <: AnyRef], remaining: Vector[String]): Scope[_ <: AnyRef] = remaining match {
+      case head +: tail => scope.children find {
+        case (Scope.Select.Matching(h), _) => h.normal == head
+        case (Scope.Select.All, _) => true
+      } match {
+        case Some((_, child)) => search(child, tail)
+        case None => scope
+      }
+      case _ => scope
+    }
+
+    search(scopes, location)
+  }
 
 }
 

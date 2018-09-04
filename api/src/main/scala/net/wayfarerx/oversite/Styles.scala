@@ -18,8 +18,6 @@
 
 package net.wayfarerx.oversite
 
-import java.net.URI
-
 /**
  * Base class for references to stylesheets.
  */
@@ -33,10 +31,10 @@ object Styles {
   /**
    * A stylesheet that can be generated on demand.
    *
-   * @param href     The virtual location of the stylesheet in the site.
+   * @param name     The name of this stylesheet in its scope.
    * @param generate The function that generates the stylesheet.
    */
-  case class Generated(href: String, generate: () => String) extends Styles
+  case class Generated(name: Name, generate: () => String) extends Styles
 
   /**
    * A stylesheet that is stored with the site.

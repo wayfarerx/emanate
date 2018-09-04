@@ -50,9 +50,7 @@ final class Parser(environment: Environment, assetTypes: Asset.Types) {
    * @return The result of attempting to load a document from disk.
    */
   def parse(stream: InputStream): IO[Markup.Document] = for {
-    _ <- IO.shift(environment.blocking)
     document <- IO(Laika.fromStream(stream))
-    _ <- IO.shift(environment.compute)
     result <- readDocument(document)
   } yield result
 
@@ -63,9 +61,7 @@ final class Parser(environment: Environment, assetTypes: Asset.Types) {
    * @return The result of attempting to load a document from disk.
    */
   def parse(path: URL): IO[Markup.Document] = for {
-    _ <- IO.shift(environment.blocking)
     document <- IO(path.openStream()).bracket(stream => IO(Laika.fromStream(stream)))(stream => IO(stream.close()))
-    _ <- IO.shift(environment.compute)
     result <- readDocument(document)
   } yield result
 

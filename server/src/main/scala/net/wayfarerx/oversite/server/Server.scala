@@ -1,249 +1,99 @@
-/*
- * Server.scala
- *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package net.wayfarerx.oversite
 package server
 
-import java.net.URL
-import java.util.concurrent.{Executors, ThreadFactory, TimeUnit}
-import javax.servlet.http.{HttpServlet, HttpServletRequest, HttpServletResponse}
-
-import concurrent.ExecutionContext
-
-import cats.effect._
-import cats.syntax.all._
-
-import org.eclipse.jetty.server.{Server => JettyServer}
-import org.eclipse.jetty.servlet.{ServletHandler, ServletHolder}
-
-import org.apache.commons.io.IOUtils
-
-import model._
+import concurrent.ExecutionContext.Implicits.global
+import cats.effect.IO
+import fs2.Stream
+import fs2.StreamApp.ExitCode
+import org.http4s._
+import org.http4s.dsl.io._
+import org.http4s.headers.`Content-Type`
+import org.http4s.server.blaze._
+import net.wayfarerx.oversite.{Path => OPath}
 
 /**
- * Main entry point for the oversite server.
+ * Factory for Oversite servers.
  */
-object Server extends IOApp {
+object Server {
 
-  /** The default TCP port to use. */
+  import model.Website
+
+  /** The default TCP port to listen on. */
   val DefaultPort: Int = 4000
 
-  /**
-   * Creates a server life cycle.
-   *
-   * @param className   The name of the class that implements `Site`.
-   * @param port        The port to serve HTTP resources on.
-   * @param environment The environment to operate in.
-   * @return A new server life cycle.
-   */
-  def apply(className: String, port: Int = DefaultPort)(implicit environment: Environment): IO[Unit] = for {
-    website <- Website(className)
-    _ <- IO.shift(environment.blocking)
-    _ <- IO {
-      val server = new JettyServer(port)
-      val handler = new ServletHandler
-      handler.addServletWithMapping(new ServletHolder(new Behavior(website)), "/*")
-      server.setHandler(handler)
-      server.start()
-      server.join()
-    }
-    _ <- IO.shift(environment.compute)
-  } yield ()
+  /** The default host to listen on. */
+  val DefaultHost: String = "localhost"
 
   /**
-   * Attempts to run an oversite server.
+   * Runs a site.
    *
-   * @param args The command line arguments.
-   * @return The result of the attempt to run the server.
+   * @tparam T The type of site reference to accept.
+   * @param site The site to run.
+   * @param port The TCP port to listen on.
+   * @param host The host to listen on.
+   * @return The lifecycle of the server.
    */
-  override def run(args: List[String]): IO[ExitCode] = {
-    IO(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool(Threads))).bracket { blocking =>
-      for {
-        environment <- IO(Environment(
-          Thread.currentThread.getContextClassLoader,
-          ExecutionContext.global,
-          blocking
-        ))
-        _ <- IO.shift(environment.compute)
-        result <- args match {
-          case className :: port :: Nil if port matches """[\d]+""" =>
-            apply(className, port.toInt)(environment).as(ExitCode.Success)
-          case className :: Nil =>
-            apply(className)(environment).as(ExitCode.Success)
-          case _ =>
-            IO(println("Usage: server <site-class-name> [site-port]")).as(ExitCode(-1))
-        }
-      } yield result
-    }(blocking => for {
-      _ <- IO(blocking.shutdown())
-      _ <- IO(blocking.awaitTermination(30, TimeUnit.SECONDS))
-    } yield ())
-
-  }
-
-  /**
-   * The servlet that bridges between Jetty and our internal implementation.
-   *
-   * @param website The website implementation.
-   */
-  final private class Behavior(website: Website) extends HttpServlet {
-
-    /* Emits the requested resource if it exists. */
-    override protected def doGet(request: HttpServletRequest, response: HttpServletResponse): Unit = {
-      for {
-        _ <- IO.shift(website.environment.compute)
-        path <- IO(request.getPathInfo)
-        _ <- search(path) flatMap {
-          case Some(Left(page)) => publish(page, response)
-          case Some(Right(url)) => publish(url, response)
-          case None => notFound(path, response)
-        }
-      } yield ()
-    }.redeemWith(t => internalError(t, response), u => IO.pure(u)).unsafeRunSync()
-
-    /**
-     * Searches the website for a page or URL.
-     *
-     * @param pathInfo The requested path information.
-     * @return The outcome of searching the website for a page or URL.
-     */
-    private def search(pathInfo: String): IO[Option[Either[Page[_ <: AnyRef], URL]]] = {
-      val (path, file) = pathInfo.split('/').toVector filterNot (_.isEmpty) match {
-        case init :+ last if last contains '.' => Path(init flatMap (Name(_)): _*) -> Some(last)
-        case all => Path(all flatMap (Name(_)): _*) -> None
+  def apply[T: Website.Source](site: T, port: Int = DefaultPort, host: String = DefaultHost): Stream[IO, ExitCode] =
+    Stream.eval[IO, Stream[IO, ExitCode]] {
+      IO(new model.Environment(Thread.currentThread.getContextClassLoader)) flatMap { implicit env =>
+        Website(site) map service map (s => BlazeBuilder[IO].bindHttp(port, host).mountService(s, "/").serve)
       }
-      file match {
-        case Some(fileName) =>
-          website.environment.find(s"$path/$fileName") map (_ map (Right(_)))
-        case None =>
-          Location(path) map (loc => website.root.index map (_ (loc)) map (_ map (Left(_)))) getOrElse IO.pure(None)
-      }
-    }
+    } flatMap identity
 
-    /**
-     * Publishes a page to a response.
-     *
-     * @param page     The page to publish.
-     * @param response The response to publish to.
-     * @return The outcome of publishing the page.
-     */
-    private def publish(page: Page[_ <: AnyRef], response: HttpServletResponse): IO[Unit] = for {
-      html <- page.publish
-      _ <- IO.shift(website.environment.blocking)
-      _ <- IO(response.setContentType("text/html"))
-      _ <- IO(response.getWriter).bracket(w => IO(w.write(html)))(w => IO(w.close()))
-      _ <- IO.shift(website.environment.compute)
-    } yield ()
-
-    /**
-     * Publishes a URL to a response.
-     *
-     * @param url      The URL to publish.
-     * @param response The response to publish to.
-     * @return The outcome of publishing the URL.
-     */
-    private def publish(url: URL, response: HttpServletResponse): IO[Unit] = for {
-      _ <- IO.shift(website.environment.blocking)
-      _ <- IO(url.openConnection()).bracket { connection =>
-        for {
-          contentType <- IO(connection.getContentType)
-          _ <- IO(response.setContentType(contentType))
-          _ <- IO(response.getOutputStream).bracket { output =>
-            IO(IO(IOUtils.copy(connection.getInputStream, output)))
-          }(o => IO(o.close()))
-        } yield ()
-      }(c => IO(c.getInputStream.close()))
-      _ <- IO.shift(website.environment.compute)
-    } yield ()
-
-    /**
-     * Publishes a not found message to a response.
-     *
-     * @param path The path that was not found.
-     * @param response The response to publish to.
-     * @return The outcome of publishing the not found message.
-     */
-    private def notFound(path: String, response: HttpServletResponse): IO[Unit] = for {
-      _ <- IO.shift(website.environment.blocking)
-      _ <- IO(response.setContentType("text/html"))
-      _ <- IO(response.setStatus(HttpServletResponse.SC_NOT_FOUND))
-      _ <- IO(response.getWriter).bracket(writer => IO(writer.write(
-        s"""<html>
-           |  <head>
-           |    <title>404 Not Found</title>
-           |  </head>
-           |  <body>
-           |    Not Found: $path
-           |  </body>
-           |</html>"""
-          .stripMargin))
-      )(w => IO(w.close()))
-      _ <- IO.shift(website.environment.compute)
-    } yield ()
-
-
-    /**
-     * Publishes an internal error message to a response.
-     *
-     * @param thrown The cause of this error report.
-     * @param response The response to publish to.
-     * @return The outcome of publishing the not found message.
-     */
-    private def internalError(thrown: Throwable, response: HttpServletResponse): IO[Unit] = for {
-      _ <- IO.shift(website.environment.blocking)
-      _ <- IO(response.setContentType("text/html"))
-      _ <- IO(response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR))
-      _ <- IO(response.getWriter).bracket(writer => IO(writer.write(
-        s"""<html>
-           |  <head>
-           |    <title>500 Internal Server Error</title>
-           |  </head>
-           |  <body>
-           |    ${thrown.getMessage}
-           |  </body>
-           |</html>"""
-          .stripMargin))
-      )(w => IO(w.close()))
-      _ <- IO.shift(website.environment.compute)
-    } yield ()
-
-  }
 
   /**
-   * The threads created by the server.
+   * Creates an HTTP service definition.
+   *
+   * @param website The website to serve.
+   * @return The new HTTP service definition.
    */
-  private object Threads extends ThreadFactory {
+  private def service(website: Website) = {
 
-    /** The group that the server threads belong to. */
-    val group = new ThreadGroup("oversite")
+    /* Attempts to serve the resource at the specified path. */
+    def serveResource(path: Path) =
+      Some(path.toList mkString "/")
+        .filterNot(_ endsWith ".md")
+        .map(website.environment.find)
+        .getOrElse(IO.pure(None))
+        .map(_ map (url => fs2.io.readInputStream(IO(url.openStream()), 4096)))
+        .flatMap {
+          _ map { data =>
+            path.lastOption
+              .map(s => s.substring(s.lastIndexOf('.') + 1))
+              .flatMap(MediaType.forExtension)
+              .map(m => Ok(data, `Content-Type`(m)))
+              .getOrElse(Ok(data))
+          } getOrElse notFound(path)
+        }
 
-    /**
-     * Creates a new server thread.
-     *
-     * @param runnable The action that the server is expected to perform.
-     * @return The new server thread.
-     */
-    override def newThread(runnable: Runnable): Thread = {
-      val thread = new Thread(group, runnable)
-      thread.setDaemon(true)
-      thread
+    /* Returns a not found response. */
+    def notFound(path: Path) =
+      NotFound(s"Not found: ${path.toList mkString "/"}")
+
+    HttpRoutes.of[IO] {
+
+      case GET -> path if path.lastOption exists (_ endsWith ".css") =>
+        val name = path.lastOption.get.substring(0, path.lastOption.get.length - 4)
+        website.site.find(path.toList.toVector.init).stylesheets collectFirst {
+          case Styles.Generated(n, generate) if n.normal == name => generate
+        } map { generate =>
+          MediaType.forExtension("css") map (m => Ok(generate(), `Content-Type`(m))) getOrElse Ok(generate())
+        } getOrElse serveResource(path)
+
+      case GET -> path if path.lastOption exists (_ contains '.') =>
+        serveResource(path)
+
+      case GET -> path =>
+        website.root.index
+          .map(index => Location(OPath(path.toList.mkString("/"))) flatMap index.pagesByLocation.get)
+          .flatMap(_ map (_.publish map (Some(_))) getOrElse IO.pure(None))
+          .flatMap {
+            _ map { page =>
+              MediaType.forExtension("html") map (m => Ok(page, `Content-Type`(m))) getOrElse Ok(page)
+            } getOrElse notFound(path)
+          }
+
     }
-
   }
 
 }

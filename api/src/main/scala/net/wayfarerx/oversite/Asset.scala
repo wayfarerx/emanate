@@ -137,7 +137,7 @@ object Asset {
     /** The prefix that is prepended to the asset name when searching. */
     def prefix: String
 
-    /** The extensions that satisfy this asset type. */
+    /** The extensions that satisfy this asset type and their associated mime types. */
     def extensions: ListSet[String]
 
     /** The simple name of this type. */

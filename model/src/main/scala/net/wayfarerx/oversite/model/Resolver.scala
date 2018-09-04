@@ -36,11 +36,11 @@ final class Resolver(site: Site, context: Context) {
    * @return The result of the attempt to resolve all authors, assets, and entities in the specified document.
    */
   def resolve(document: Markup.Document): IO[Markup.Document] = for {
-    description <- resolveInlines(document.descriptions)
+    description <- resolveInlines(document.description)
     author <- document.author map (a => resolve(a) map (Some(_))) getOrElse resolve(Author(site.owner)).map(Some(_))
     content <- resolveBlocks(document.content)
     sections <- resolveSections(document.sections)
-  } yield document.copy(descriptions = description, author = author, content = content, sections = sections)
+  } yield document.copy(description = description, author = author, content = content, sections = sections)
 
   /**
    * Resolves an author.

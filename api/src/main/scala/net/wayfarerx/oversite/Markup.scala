@@ -46,14 +46,14 @@ object Markup {
    * A markup document.
    *
    * @param name        The name of this document.
-   * @param descriptions The description of this document.
+   * @param description The description of this document.
    * @param author      The optional author of this document.
    * @param content     The main content of this document.
    * @param sections    The subsections of this document.
    */
   case class Document(
     name: Name,
-    descriptions: Vector[Inline],
+    description: Vector[Inline],
     author: Option[Author],
     content: Vector[Block],
     sections: Vector[Section]
@@ -64,7 +64,7 @@ object Markup {
 
     /* Return the stripped content. */
     override def strip: String =
-      s"#$title\r\n\r\n" + descriptions.map(_.strip).mkString + "\r\n\r\n" +
+      s"#$title\r\n\r\n" + description.map(_.strip).mkString + "\r\n\r\n" +
         author.map("By " + _ + "\r\n\r\n").getOrElse("") +
         content.map(_.strip).mkString + sections.map(_.strip).mkString
 

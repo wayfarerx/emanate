@@ -58,11 +58,9 @@ object Authors {
   def apply(environment: Environment, resource: String): IO[Authors] =
     for {
       url <- environment.find(resource)
-      _ <- IO.shift(environment.blocking)
       lines <- url map { data =>
         IO(Source.fromInputStream(data.openStream())).bracket(s => IO(s.getLines().toVector))(s => IO(s.close()))
       } getOrElse IO.pure(Vector.empty)
-      _ <- IO.shift(environment.compute)
     } yield
       Authors(lines.map(_.split("""[\s]+""").toVector.filterNot(_.isEmpty)).flatMap {
         case Vector(name) =>

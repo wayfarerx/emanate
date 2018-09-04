@@ -19,25 +19,12 @@
 package net.wayfarerx.oversite
 package model
 
-import concurrent.ExecutionContext
-
 /**
  * Support for tests that require environments.
  */
 trait EnvironmentSupport {
 
-  /** The immediate mode executor. */
-  private val executor = new ExecutionContext {
-
-    override def execute(runnable: Runnable): Unit =
-      runnable.run()
-
-    override def reportFailure(cause: Throwable): Unit =
-      cause.printStackTrace()
-
-  }
-
   /** The environment to use when testing. */
-  val environment = Environment(getClass.getClassLoader, executor, executor)
+  val environment = new Environment(getClass.getClassLoader)
 
 }

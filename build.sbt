@@ -3,7 +3,8 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.1.5"
+  version := "0.1.7",
+  scalacOptions ++= Seq("-Ypartial-unification")
 )
 
 lazy val api = (project in file("api")).
@@ -50,6 +51,10 @@ lazy val server = (project in file("server")).
     name := "oversite-server",
     libraryDependencies ++= Seq(
       CommonsIO,
+      Fs2Core,
+      Fs2Io,
+      Http4sDsl,
+      Http4sBlazeServer,
       JettyServer,
       JettyServlet,
       ScalaTest % Test

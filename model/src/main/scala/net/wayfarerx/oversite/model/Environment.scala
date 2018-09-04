@@ -24,7 +24,6 @@ import java.nio.file.{Files, Paths, Path => JPath}
 import java.util.jar.JarFile
 
 import collection.JavaConverters._
-import concurrent.ExecutionContext
 
 import cats.effect.IO
 
@@ -32,14 +31,8 @@ import cats.effect.IO
  * The environment provided to the model.
  *
  * @param classLoader The class loader to use.
- * @param compute     The context that handles non-blocking operations.
- * @param blocking    The context that handles blocking operations.
  */
-case class Environment(
-  classLoader: ClassLoader,
-  compute: ExecutionContext,
-  blocking: ExecutionContext
-) {
+final class Environment(val classLoader: ClassLoader) extends AnyVal {
 
   /**
    * Attempts to return the URL of a specific resource if it exists.
@@ -49,13 +42,7 @@ case class Environment(
    */
   def find(resource: String): IO[Option[URL]] = {
     val r = normalize(resource)
-    if (r endsWith ".class") IO.pure(None) else {
-      for {
-        _ <- IO.shift(blocking)
-        url <- IO(classLoader.getResource(r))
-        _ <- IO.shift(compute)
-      } yield url
-    } map (Option(_))
+    if (r endsWith ".class") IO.pure(None) else IO(Option(classLoader.getResource(r)))
   }
 
   /**
@@ -67,7 +54,6 @@ case class Environment(
   def list(directory: String): IO[Vector[String]] = {
     val d = normalize(s"$directory/")
     for {
-      _ <- IO.shift(blocking)
       target <- IO(classLoader.getResource(d)) map (Option(_))
       results <- target match {
         case Some(url) => url match {
@@ -92,7 +78,6 @@ case class Environment(
         }
         case None => IO.pure(Vector.empty)
       }
-      _ <- IO.shift(compute)
     } yield results filterNot (_ endsWith ".class") map (c => normalize(d + c))
   }
 

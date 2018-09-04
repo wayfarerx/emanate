@@ -44,12 +44,13 @@ object Website {
   /**
    * Attempts to create a new website.
    *
-   * @param className   The name of the class that defines the site.
+   * @tparam T The type of source that defines the site.
+   * @param source      The source of the object that defines the site.
    * @param environment The environment to operate in.
    * @return The result of attempting to create a new website.
    */
-  def apply(className: String)(implicit environment: Environment): IO[Website] = for {
-    site <- IO(environment.classLoader.loadClass(className).newInstance.asInstanceOf[Site])
+  def apply[T: Source](source: T)(implicit environment: Environment): IO[Website] = for {
+    site <- implicitly[Source[T]].toSite(source)
     authors <- Authors(environment, "authors.txt")
     owner <- authors(site.owner) map IO.pure getOrElse
       IO.raiseError(new IllegalArgumentException(s"Owner ${site.owner} not found"))
@@ -58,5 +59,48 @@ object Website {
       IO.pure(Website(environment, site, owner, Page.Root(site, environment, authors, site.assetTypes, site.scopes, r)))
     } getOrElse IO.raiseError(new IllegalArgumentException("Root index.md not found"))
   } yield website
+
+  /**
+   * Base type for the source of a site.
+   *
+   * @tparam T The supported type.
+   */
+  trait Source[T] {
+
+    /**
+     * Creates a site from a source.
+     *
+     * @param source      The source to create a site from.
+     * @param environment The environment to operate in.
+     * @return A site created from the source.
+     */
+    def toSite(source: T)(implicit environment: Environment): IO[Site]
+
+  }
+
+  /**
+   * Definitions of the supported site source types.
+   */
+  object Source {
+
+    /** The source for existing sites. */
+    implicit final val ForSite: Source[Site] = new Source[Site] {
+      override def toSite(source: Site)(implicit environment: Environment): IO[Site] =
+        IO.pure(source)
+    }
+
+    /** The source for new instances of site classes. */
+    implicit final val ForClass: Source[Class[_]] = new Source[Class[_]] {
+      override def toSite(source: Class[_])(implicit environment: Environment): IO[Site] =
+        IO(source.newInstance.asInstanceOf[Site]) flatMap ForSite.toSite
+    }
+
+    /** The source for new instances of site classes by name. */
+    implicit final val ForName: Source[String] = new Source[String] {
+      override def toSite(source: String)(implicit environment: Environment): IO[Site] =
+        IO(environment.classLoader.loadClass(source)) flatMap ForClass.toSite
+    }
+
+  }
 
 }

@@ -18,9 +18,9 @@
 
 package net.wayfarerx.oversite
 
-import java.net.URI
-
 import reflect.ClassTag
+
+import cats.effect.IO
 
 /**
  * A typed scope in a site.
@@ -30,7 +30,7 @@ import reflect.ClassTag
  * @param children    The scope selectors for children of this scope.
  */
 case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
-  stylesheets: Vector[Styles],
+  stylesheets: Vector[Scope.Styles],
   children: Vector[(Scope.Select, Scope[_ <: AnyRef])]
 ) {
 
@@ -43,16 +43,27 @@ case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
   /** The publisher for the entities contained in this scope. */
   def publisher: Publisher[T] = implicitly[Publisher[T]]
 
+  /** Returns this scope as an unspecified extension of itself. */
+  def extended: Scope[T] = if (stylesheets.isEmpty) this else copy(Vector.empty)
+
   /**
    * Returns the specified child of this scope.
    *
    * @param name The name that identifies the child scope.
    * @return The scope for the specified child of this scope.
    */
-  def apply(name: Name): Scope[_ <: AnyRef] = children collectFirst {
-    case (Scope.Select.Matching(_name), child) if _name == name => child
+  def apply(name: Name): Scope[_ <: AnyRef] = search(name) getOrElse extended
+
+  /**
+   * Returns the specified child of this scope if one exists.
+   *
+   * @param name The name that identifies the child scope.
+   * @return The specified child of this scope if one exists.
+   */
+  def search(name: Name): Option[Scope[_ <: AnyRef]] = children collectFirst {
+    case (Scope.Select.Matching(n), child) if n == name => child
     case (Scope.Select.All, child) => child
-  } getOrElse (if (stylesheets.isEmpty && children.isEmpty) this else copy(Vector.empty, Vector.empty))
+  }
 
 }
 
@@ -123,14 +134,16 @@ object Scope {
    */
   object Select {
 
+    /** Returns the all selector. */
+    def apply(): Select = All
+
     /**
-     * Converts a string into a selector.
+     * Converts a name into a selector.
      *
-     * @param str The string to convert.
+     * @param name The name to convert.
      * @return A new scope selector.
      */
-    def apply(str: String): Select =
-      Name(str) map Matching getOrElse All
+    def apply(name: Name): Select = Matching(name)
 
     /**
      * Selects all children.
@@ -143,6 +156,51 @@ object Scope {
      * @param name The name to match.
      */
     case class Matching(name: Name) extends Select
+
+  }
+
+  /**
+   * Base class for stylesheet declarations.
+   */
+  sealed trait Styles
+
+  /**
+   * Definitions of the supported stylesheet references.
+   */
+  object Styles {
+
+    /**
+     * A stylesheet that can be generated on demand.
+     *
+     * @param name     The name of this stylesheet in its scope.
+     * @param generate The function that generates the stylesheet.
+     */
+    case class Generated(name: Name, generate: Context => IO[String]) extends Styles
+
+    /**
+     * Base class for references to stylesheets.
+     */
+    sealed trait Reference extends Styles
+
+    /**
+     * A stylesheet that is stored within the site.
+     *
+     * @param pointer The pointer that identifies the internal stylesheet.
+     */
+    case class Internal(pointer: Pointer.Internal[Pointer.Stylesheet]) extends Reference
+
+    /**
+     * A stylesheet that is stored outside the site.
+     *
+     * @param pointer     The pointer that identifies the external stylesheet.
+     * @param integrity   The assertion about the stylesheet's integrity.
+     * @param crossorigin The crossorigin configuration.
+     */
+    case class External(
+      pointer: Pointer.External[Pointer.Stylesheet],
+      integrity: Option[String] = None,
+      crossorigin: Option[String] = None
+    ) extends Reference
 
   }
 

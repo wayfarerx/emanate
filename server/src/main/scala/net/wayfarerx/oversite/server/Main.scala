@@ -30,11 +30,11 @@ import fs2.{Stream, StreamApp}
  */
 object Main extends StreamApp[IO] {
 
-  /** The regex that decribes a port. */
+  /** The regex that describes a port. */
   private val PortPattern =
-    s"""[\p{Digit}]+""".r
+    s"""[0-9]+""".r
 
-  /** An application stream that should never emit or emit a single ExitCode */
+  /* Construct a stream that can only complete when the JVM is terminated. */
   def stream(args: List[String], requestShutdown: IO[Unit]): Stream[IO, StreamApp.ExitCode] = args match {
     case className :: PortPattern(port) :: host :: Nil =>
       Stream.eval(IO(port.toInt)).flatMap(Server(className, _, host))

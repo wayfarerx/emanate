@@ -87,7 +87,7 @@ sealed trait Page[T <: AnyRef] extends Context {
 
   /** The description of this page. */
   final val description: IO[Vector[Markup.Inline]] =
-    document map (_.description)
+    document map (_.metadata.description)
 
   /**
    * Attempts to decode this page's entity.
@@ -138,8 +138,26 @@ sealed trait Page[T <: AnyRef] extends Context {
   def index: IO[Index]
 
   /* Provide the stylesheets from this page and its parents. */
-  override def stylesheets: IO[Vector[Styles]] =
-    parent map (_.stylesheets map (_ ++ scope.stylesheets)) getOrElse IO.pure(scope.stylesheets)
+  override def stylesheets: IO[Vector[Styles.Resolved]] = {
+    lazy val sheets = scope.stylesheets collect {
+      case Styles.Generated(name, _) =>
+        Styles.Internal(Asset.Stylesheet(Path(Asset.Stylesheet.prefix), s"$name.${Asset.Stylesheet.extensions.head}"))
+      case other: Styles.Resolved => other
+    }
+    parent map (_.stylesheets map (p => p.map {
+      case Styles.Internal(relative@Asset.Relative(_, _, _)) =>
+        Styles.Internal(relative.copy(path = Path.Parent +: relative.path))
+      case other => other
+    } ++ sheets)) getOrElse IO.pure(sheets)
+  }
+
+  /* Resolve the path. */
+  override def resolve(path: Path): Either[Path, Location] =
+    Location(location.path ++ path) map resolve getOrElse Left(path)
+
+  /* Resolve the location. */
+  override def resolve(location: Location): Either[Path, Location] =
+    finish(location) map (Left(_)) getOrElse Right(location)
 
   /* Resolve the specified author reference. */
   override def resolve(author: Author): IO[Option[Author]] =
@@ -280,7 +298,16 @@ object Page {
         }
 
       IO(cachedChildren) flatMap (_ map IO.pure getOrElse {
-        environment.list(location.toString) flatMap (search(IO.pure(Vector.empty), _)) map { c =>
+        environment.list(location.toString) flatMap { list =>
+          val scopes = scope.children.collect {
+            case (Scope.Select.Matching(name), _) => (location.path :+ name) + "/"
+          }.toSet -- list
+          search(IO.pure(Vector.empty), {
+            val found = scopes ++: list.filterNot(i => i == "index.md" || i.endsWith("/index.md"))
+            println(s"FOUND: $found AT $location")
+            found
+          })
+        } map { c =>
           cachedChildren = Some(c); c
         }
       })

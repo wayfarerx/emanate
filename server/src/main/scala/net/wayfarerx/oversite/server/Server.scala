@@ -1,3 +1,21 @@
+/*
+ * Server.scala
+ *
+ * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package net.wayfarerx.oversite
 package server
 
@@ -36,7 +54,7 @@ object Server {
   def apply[T: Website.Source](site: T, port: Int = DefaultPort, host: String = DefaultHost): Stream[IO, ExitCode] =
     Stream.eval[IO, Stream[IO, ExitCode]] {
       IO(new model.Environment(Thread.currentThread.getContextClassLoader)) flatMap { implicit env =>
-        Website(site) map service map (s => BlazeBuilder[IO].bindHttp(port, host).mountService(s, "/").serve)
+        Website(site) map (w => BlazeBuilder[IO].bindHttp(port, host).mountService(service(w), "/").serve)
       }
     } flatMap identity
 
@@ -72,9 +90,10 @@ object Server {
 
     HttpRoutes.of[IO] {
 
-      case GET -> path if path.lastOption exists (_ endsWith ".css") =>
+      case GET -> path
+        if path.lastOption.exists(_ endsWith ".css") && path.parent.lastOption.contains(Asset.Stylesheet.prefix) =>
         val name = path.lastOption.get.substring(0, path.lastOption.get.length - 4)
-        website.site.find(path.toList.toVector.init).stylesheets collectFirst {
+        website.site.find(path.toList.toVector dropRight 2).stylesheets collectFirst {
           case Styles.Generated(n, generate) if n.normal == name => generate
         } map { generate =>
           MediaType.forExtension("css") map (m => Ok(generate(), `Content-Type`(m))) getOrElse Ok(generate())
@@ -84,14 +103,21 @@ object Server {
         serveResource(path)
 
       case GET -> path =>
-        website.root.index
-          .map(index => Location(OPath(path.toList.mkString("/"))) flatMap index.pagesByLocation.get)
-          .flatMap(_ map (_.publish map (Some(_))) getOrElse IO.pure(None))
-          .flatMap {
-            _ map { page =>
-              MediaType.forExtension("html") map (m => Ok(page, `Content-Type`(m))) getOrElse Ok(page)
-            } getOrElse notFound(path)
-          }
+        println(s"PATH: $path")
+        for {
+          page <- website.root.index.map({ index =>
+            println(s"INDEX: ${index.pagesByLocation.mapValues(_.name)}")
+            Location(OPath(path.toList.mkString("/"))) flatMap index.pagesByLocation.get
+          })
+          html <- page map (_.publish map (Some(_))) getOrElse IO.pure(None)
+          response <- html map { page =>
+            MediaType.forExtension("html") map (m => Ok(page, `Content-Type`(m))) getOrElse Ok(page)
+          } getOrElse notFound(path)
+        } yield {
+          println(s"PAGE: ${page map (_.location)}")
+          println()
+          response
+        }
 
     }
   }

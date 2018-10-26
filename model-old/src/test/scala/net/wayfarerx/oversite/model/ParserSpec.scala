@@ -37,9 +37,11 @@ class ParserSpec extends FlatSpec with Matchers with EnvironmentSupport {
       new Parser(environment, Asset.Types.default) parse _
     }(stream => IO(stream.close())).unsafeRunSync()
     doc shouldBe Document(
-      Name("Test Page").get,
-      Vector(Text("This "), Strong(Vector(Text("describes"))), Text(" the test page. ")),
-      Some(Author(Name("wayfarerx").get)),
+      Metadata(
+        name"Test Page",
+        Vector(Text("This "), Strong(Vector(Text("describes"))), Text(" the test page. ")),
+        Some(Author(name"wayfarerx"))
+      ),
       Vector(Paragraph(Vector(Text("This is the main "), Emphasized(Vector(Text("content"))), Text(".")))),
       Vector(
         Section(2, Vector(Text("Section 1")), Vector(

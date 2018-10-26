@@ -1,5 +1,5 @@
 /*
- * Decoder.scala
+ * Main.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -17,23 +17,25 @@
  */
 
 package net.wayfarerx.oversite
+package generator
 
-import cats.effect.IO
+import java.nio.file.Paths
+
+import cats.effect.{ExitCode, IO, IOApp}
 
 /**
- * Defines how an entity is decoded from a document.
- *
- * @tparam T The type of entity being decoded.
+ * Main entry point for the oversite generator.
  */
-trait Decoder[+T <: AnyRef] {
+object Main extends IOApp {
 
-  /**
-   * Attempts to decode an entity from a document.
-   *
-   * @param document The document to decode.
-   * @param ctx The context to decode in.
-   * @return The result of attempting to decode an entity from a document.
-   */
-  def decode(document: Document)(implicit ctx: Context): IO[T]
+  /* Generate the site and exit. */
+  override def run(args: List[String]): IO[ExitCode] = args match {
+    case className :: target :: Nil =>
+      IO(Paths.get(target)) flatMap (Generator(className, _)) map (_ => ExitCode.Success)
+    case className :: Nil =>
+      IO(Paths.get("./target/oversite")) flatMap (Generator(className, _)) map (_ => ExitCode.Success)
+    case _ =>
+      IO(println("Usage: oversite <site-class> [target]")) map (_ => ExitCode.Error)
+  }
 
 }

@@ -18,8 +18,6 @@
 
 package net.wayfarerx.oversite
 
-import reflect.ClassTag
-
 import cats.effect.IO
 
 /**
@@ -28,13 +26,13 @@ import cats.effect.IO
 trait Context {
 
   /** Returns the site that contains this location. */
-  def site: Site
+  def site: Site[_ <: AnyRef]
 
   /** Returns the current location in the site. */
   def location: Location
 
-  /** Attempts to return the stylesheets that are active in this context. */
-  def stylesheets: IO[Vector[Styles]]
+  /** Attempts to return all the stylesheets that are active in this context. */
+  def stylesheets: Vector[Scope.Styles.Reference]
 
   /**
    * Attempts to return the fully resolved form of the specified author.
@@ -42,41 +40,51 @@ trait Context {
    * @param author The author to resolve.
    * @return The result of attempting to resolve the specified author.
    */
-  def resolve(author: Author): IO[Option[Author]]
+  def resolve(author: Author): IO[Author]
 
   /**
-   * Attempts to return the fully resolved form of the specified asset.
+   * Attempts to resolve the specified pointer.
    *
-   * @tparam T The type of asset to resolve.
-   * @param asset The asset to resolve.
-   * @return The result of attempting to resolve the specified asset.
+   * @tparam T The type of the pointer to resolve.
+   * @param pointer The pointer to resolve.
+   * @return The result of attempting to resolve the specified pointer.
    */
-  def resolve[T <: Asset.Type](asset: Asset[T]): IO[Option[Asset.Resolved[T]]]
+  def resolve[T <: Pointer.Type](pointer: Pointer[T]): IO[Pointer.Resolved[T]]
 
   /**
-   * Attempts to return the fully resolved form of the specified entity.
+   * Attempts to resolve the specified pointer.
    *
-   * @tparam T The type of entity to resolve.
-   * @param entity The entity to resolve.
-   * @return The result of attempting to resolve the specified entity.
+   * @tparam T The type of the pointer to resolve.
+   * @tparam S The type of suffix of the pointer to resolve.
+   * @param pointer The pointer to resolve.
+   * @return The result of attempting to resolve the specified pointer.
    */
-  def resolve[T <: AnyRef : ClassTag](entity: Entity[T]): IO[Option[Entity.Resolved[T]]]
+  def resolve[T <: Pointer.Type.Aux[S], S](pointer: Pointer.Internal[T]): IO[Pointer.Target[T, S]]
 
   /**
-   * Attempts to load the alt-text for a specific image.
+   * Attempts to resolve the specified pointer.
    *
-   * @param image The image to load the alt-text for.
-   * @return The result of attempting to load the alt-text for a specific image.
+   * @tparam T The type of the pointer to resolve.
+   * @param pointer The pointer to resolve.
+   * @return The result of attempting to resolve the specified pointer.
    */
-  def alt(image: Asset.Resolved[Asset.Image]): IO[Option[String]]
+  def resolve[T <: Pointer.Asset](pointer: Pointer.External[T]): IO[Pointer.External[T]]
 
   /**
    * Attempts to load the data associated with the specified entity.
    *
    * @tparam T The type of entity to load.
-   * @param entity The entity to load.
+   * @param entity The internal pointer to the entity to load.
    * @return The result of attempting to load the data for the specified entity.
    */
-  def load[T <: AnyRef : ClassTag](entity: Entity[T]): IO[Option[T]]
+  def load[T <: AnyRef](entity: Pointer.Internal[Pointer.Entity[T]]): IO[T]
+
+  /**
+   * Attempts to load the alt-text for a specific image.
+   *
+   * @param image The resolved pointer to the image to load the alt-text for.
+   * @return The result of attempting to load the alt-text for a specific image.
+   */
+  def alt(image: Pointer.Internal[Pointer.Image]): IO[Option[String]]
 
 }

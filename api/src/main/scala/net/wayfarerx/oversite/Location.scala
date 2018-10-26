@@ -24,8 +24,13 @@ package net.wayfarerx.oversite
 final class Location private(val path: Path) extends Product1[Path] {
 
   /** The parent location. */
-  lazy val parent: Option[Location] =
-    Location(path.parent.normalized)
+  def parent: Option[Location] = Location(path.parent)
+
+  /** The names that make up this location. */
+  def names: Vector[Name] = path.elements collect { case Path.Child(name) => name }
+
+  /* Return the path. */
+  override def _1: Path = path
 
   /**
    * Extends this location.
@@ -33,8 +38,7 @@ final class Location private(val path: Path) extends Product1[Path] {
    * @param name The name to extend this location with.
    * @return The extended location.
    */
-  def :+ (name: Name): Location =
-    new Location(path :+ name)
+  def :+(name: Name): Location = new Location(path :+ name)
 
   /**
    * Returns the longest prefix shared between this and that location.
@@ -42,11 +46,13 @@ final class Location private(val path: Path) extends Product1[Path] {
    * @param that The location to compare against.
    * @return The longest prefix shared between this and that location.
    */
-  def commonPrefixWith(that: Location): Path = {
-    val max = Math.min(path.elements.length, that.path.elements.length)
-    Path(path.elements.iterator.take(max).zip(that.path.elements.iterator.take(max)).takeWhile {
+  def commonPrefixWith(that: Location): Location = {
+    val self = names
+    val other = that.names
+    val max = Math.min(self.length, other.length)
+    new Location(Path(self.take(max) zip other.take(max) takeWhile {
       case (ours, theirs) => ours == theirs
-    }.map(_._1).toVector)
+    } map (_._1): _*))
   }
 
   /**
@@ -57,28 +63,27 @@ final class Location private(val path: Path) extends Product1[Path] {
    */
   def distanceTo(that: Location): Int = {
     val common = commonPrefixWith(that)
-    (path.elements.length - common.elements.length) - (that.path.elements.length - common.elements.length)
+    (path.elements.length - common.path.elements.length) + (that.path.elements.length - common.path.elements.length)
   }
 
-  /* Return the path. */
-  override def _1: Path =
-    path
+  /* Check for matching paths. */
+  override def canEqual(that: Any): Boolean = that match {
+    case Location(_) => true
+    case _ => false
+  }
 
   /* Check for matching paths. */
-  override def canEqual(that: Any): Boolean =
-    Option(that) collect { case Location(p) => p == path } getOrElse false
-
-  /* Check for matching paths. */
-  override def equals(obj: Any): Boolean =
-    canEqual(obj)
+  override def equals(that: Any): Boolean = that match {
+    case l@Location(p) if l canEqual this => p == path
+    case _ => false
+  }
 
   /* Check for matching paths. */
   override def hashCode(): Int =
     Location.hashCode ^ path.hashCode
 
   /* Return the absolute path. */
-  override def toString: String =
-    s"/$path/"
+  override def toString: String = s"/$path"
 
 }
 
@@ -94,12 +99,19 @@ object Location extends (Path => Option[Location]) {
    * Attempts to create a location.
    *
    * @param path The path of the location to create.
-   * @return A new name if a resolvable path was provided.
+   * @return A new location if a resolvable path was provided.
    */
-  override def apply(path: Path): Option[Location] = {
-    val normalized = path.normalized
-    if (normalized.isResolved) Some(new Location(normalized)) else None
-  }
+  override def apply(path: Path): Option[Location] =
+    Some(path.normalized) filter (_.isResolved) map (new Location(_))
+
+  /**
+   * Creates a location from a resolved path.
+   *
+   * @param path The resolved path of the location to create.
+   * @return A new location for the resolved path.
+   */
+  def resolved(path: Path): Location =
+    new Location(path.resolved)
 
   /**
    * Extracts the contents of a location.

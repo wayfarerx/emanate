@@ -1,5 +1,5 @@
 /*
- * Decoder.scala
+ * Metadata.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -18,22 +18,17 @@
 
 package net.wayfarerx.oversite
 
-import cats.effect.IO
-
 /**
- * Defines how an entity is decoded from a document.
+ * Document metadata.
  *
- * @tparam T The type of entity being decoded.
+ * @param name        The name of the document.
+ * @param author      The optional author of the document.
+ * @param description The optional description of the document.
+ * @param image       The optional image for the document.
  */
-trait Decoder[+T <: AnyRef] {
-
-  /**
-   * Attempts to decode an entity from a document.
-   *
-   * @param document The document to decode.
-   * @param ctx The context to decode in.
-   * @return The result of attempting to decode an entity from a document.
-   */
-  def decode(document: Document)(implicit ctx: Context): IO[T]
-
-}
+case class Metadata(
+  name: Name,
+  author: Option[Author] = None,
+  description: Vector[Markup.Inline] = Vector.empty,
+  image: Option[Pointer.Internal[Pointer.Image]] = Some(Pointer.Image(Pointer.Image.default))
+)

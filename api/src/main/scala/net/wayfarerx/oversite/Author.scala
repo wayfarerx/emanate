@@ -21,7 +21,7 @@ package net.wayfarerx.oversite
 /**
  * An author that provides content to the site.
  *
- * @param name The name of this author.
+ * @param name    The name of this author.
  * @param twitter The optional Twitter handle of this author.
  */
 case class Author(
@@ -32,6 +32,12 @@ case class Author(
 
   /** The ID of this author. */
   def id: String = name.normal
+
+  /** The external reference if one exists. */
+  def link: Option[Pointer.External[Pointer.Page]] =
+    twitter.map(t => s"https://twitter.com/$t")
+      .orElse(email.map(e => s"mailto:$e"))
+      .map(Pointer.External(Pointer.Page, _))
 
   /* Return the display name of this author. */
   override def toString: String = name.display

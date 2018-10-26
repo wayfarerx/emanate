@@ -20,8 +20,7 @@ package net.wayfarerx.oversite
 package utils
 
 import cats.effect.IO
-
-import scalatags.Text.TypedTag
+import scalatags.Text.{Modifier, TypedTag}
 import scalatags.Text.all._
 
 /**
@@ -48,34 +47,35 @@ trait Page[T] {
    * @param ctx    The context to render in.
    * @return The result of attempting to render the head tag.
    */
-  protected def headTag(entity: T)(implicit ctx: Context): IO[TypedTag[String]] = for {
-    image <- ctx.resolve(pageImage(entity))
-    src <- image flatMap {
-      case Asset.Relative(path, fileName, _) => Location(ctx.location.path ++ path) map (_ + fileName)
-      case Asset.Absolute(location, fileName, _) => Some(location + fileName)
-    } map (img => IO.pure(Some(ctx.site.baseUrl + img))) getOrElse IO.pure(None)
-    alt <- image map ctx.alt getOrElse IO.pure(None)
-    owner <- ctx.resolve(Author(ctx.site.owner))
-    styles <- ctx.stylesheets
-    stylesheets <- (IO.pure(Vector.empty[Styles.Explicit]) /: styles) { (results, stylesheet) =>
-      results flatMap { r =>
-        stylesheet match {
-          case Styles.Internal(asset) =>
-            ctx.resolve(asset) map (_ map (a => r :+ Styles.Explicit(a.href)) getOrElse r)
-          case Styles.Generated(n, _) =>
-            IO.pure(r :+ Styles.Explicit(s"${ctx.location}$n.css"))
-          case explicit@Styles.Explicit(_, _, _) =>
-            IO.pure(r :+ explicit)
+  protected def headTag(entity: T)(implicit ctx: Context): IO[TypedTag[String]] = {
+    val metadata = pageMetadata(entity)
+    val title = metadata.name.display
+    val description = metadata.description.map(_.strip).mkString
+    val author = metadata.author
+    val keywords = s"$title $description ${author map (_.name.display) getOrElse ""}"
+      .split("""[_,;:<>`\s\-\.\[\]\(\)\'\"]+""")
+      .filterNot(k => Page.IgnoredKeywords(k.toLowerCase)).distinct
+    val img = pageImage(entity)
+    for {
+      owner <- ctx.resolve(Author(ctx.site.owner))
+      styles <- ctx.stylesheets
+      stylesheets <- (IO.pure(Vector.empty[Styles.Explicit]) /: styles) { (results, stylesheet) =>
+        results flatMap { r =>
+          stylesheet match {
+            case Styles.Internal(asset) =>
+              ctx.resolve(asset) map (_ map (a => r :+ Styles.Explicit(a.href)) getOrElse r)
+            case explicit@Styles.Explicit(_, _, _) =>
+              IO.pure(r :+ explicit)
+          }
         }
       }
-    }
-  } yield {
-    val title = pageName(entity).display
-    val description = pageDescription(entity).map(_.strip).mkString
-    val author = pageAuthor(entity) orElse owner
-    val keywords = (s"$title $description ${author.map(_.name).getOrElse("")}" split
-      """[\s-_\.,;:[]<>\(\)`'"]+""" filterNot (_.isEmpty) filterNot Page.IgnoredKeywords).distinct
-    head(
+      image <- ctx.resolve(img.asset)
+      src <- image flatMap {
+        case Asset.Relative(path, fileName, _) => Location(ctx.location.path ++ path) map (_ + fileName)
+        case Asset.Absolute(location, fileName, _) => Some(location + fileName)
+      } map (abs => IO.pure(Some(ctx.site.baseUrl + abs))) getOrElse IO.pure(None)
+      alt <- img.alt map (a => IO.pure(Some(a))) orElse (image map ctx.alt) getOrElse IO.pure(None)
+    } yield head(
       meta(charset := "utf-8"),
       meta(httpEquiv := "X-UA-Compatible", content := "IE=edge"),
       meta(name := "viewport", content := "width=device-width, initial-scale=1"),
@@ -91,17 +91,12 @@ trait Page[T] {
       meta(name := "twitter:card", content := "summary_large_image"),
       owner flatMap (_.twitter) map (t => meta(name := "twitter:site", content := t)),
       author flatMap (_.twitter) map (t => meta(name := "twitter:creator", content := t)),
-      stylesheets map {
-        case Styles.Explicit(_href, None, None) =>
-          link(rel := "stylesheet", href := _href)
-        case Styles.Explicit(_href, Some(integrity), None) =>
-          link(rel := "stylesheet", href := _href, attr("integrity") := integrity)
-        case Styles.Explicit(_href, None, Some(crossorigin)) =>
-          link(rel := "stylesheet", href := _href, attr("crossorigin") := crossorigin)
-        case Styles.Explicit(_href, Some(integrity), Some(crossorigin)) =>
-          link(rel := "stylesheet", href := _href, attr("integrity") := integrity, attr("crossorigin") := crossorigin)
-      }
-    )
+      stylesheets map (stylesheet => link(
+        rel := "stylesheet",
+        href := stylesheet.href,
+        stylesheet.integrity map (attr("integrity") := _),
+        stylesheet.crossorigin map (attr("crossorigin") := _)
+      )))
   }
 
   /**
@@ -115,20 +110,12 @@ trait Page[T] {
     pageContent(entity) map (body(_))
 
   /**
-   * Returns the name of a page.
+   * Returns the metadata of a page.
    *
    * @param entity The entity being rendered.
-   * @return The name of the page.
+   * @return The metadata of the page.
    */
-  protected def pageName(entity: T): Name
-
-  /**
-   * Returns the description of a page.
-   *
-   * @param entity The entity being rendered.
-   * @return The description of the page.
-   */
-  protected def pageDescription(entity: T): Vector[Markup.Inline] = Vector.empty
+  protected def pageMetadata(entity: T): Markup.Metadata
 
   /**
    * Returns the author of a page.
@@ -136,15 +123,8 @@ trait Page[T] {
    * @param entity The entity being rendered.
    * @return The author of the page.
    */
-  protected def pageAuthor(entity: T): Option[Author] = None
-
-  /**
-   * Returns the author of a page.
-   *
-   * @param entity The entity being rendered.
-   * @return The author of the page.
-   */
-  protected def pageImage(entity: T): Asset[Asset.Image] = Asset.Image(Name("image").get)
+  protected def pageImage(entity: T): Markup.Image =
+    Markup.Image(Asset.Image(name"image"), None, None)
 
   /**
    * Attempts to render the page content inside a body tag.
@@ -159,12 +139,45 @@ trait Page[T] {
 
 object Page {
 
-  private val IgnoredKeywords = Set.empty[String]
+  private val IgnoredKeywords = Set(
+    "",
+    "net",
+    "of",
+    "the"
+  )
 
-  implicit final class ImageRenderer(val image: Asset.Resolved[Asset.Image]) extends AnyVal {
+  private def resolveImageData(
+    image: Asset[Asset.Image]
+  )(
+    implicit ctx: Context
+  ): IO[Option[(Asset.Resolved[Asset.Image], Option[String])]] = {
+    for {
+      _img <- image match {
+        case resolved: Asset.Resolved[Asset.Image] => IO.pure(Some(resolved))
+        case other => ctx.resolve(other)
+      }
+      _alt <- _img map ctx.alt getOrElse IO.pure(None)
+    } yield _img map (_ -> _alt)
+  }
 
-    def renderImg(implicit ctx: Context): IO[Frag] =
-      ctx.alt(image) map (a => img(src := image.href, a map (alt := _) getOrElse frag()))
+  implicit final class ImageAssetRenderer(val image: Asset[Asset.Image]) extends AnyVal {
+
+    def renderImg(xs: Modifier*)(implicit ctx: Context): IO[Frag] =
+      resolveImageData(image) map {
+        case Some((_img, _alt)) => img(src := _img.href, _alt map (alt := _), xs)
+        case _ => frag()
+      }
+
+  }
+
+  implicit final class ImageMarkupRenderer(val image: Markup.Image) extends AnyVal {
+
+    def renderImg(xs: Modifier*)(implicit ctx: Context): IO[Frag] =
+      resolveImageData(image.asset) map {
+        case Some((_img, _alt)) =>
+          img(src := _img.href, image.alt orElse _alt map (alt := _), image.title map (title := _), xs)
+        case _ => frag()
+      }
 
   }
 

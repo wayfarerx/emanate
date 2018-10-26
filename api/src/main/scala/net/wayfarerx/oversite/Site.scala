@@ -21,22 +21,19 @@ package net.wayfarerx.oversite
 /**
  * Describes an entire site.
  */
-trait Site {
+trait Site[T <: AnyRef] extends (Location => Scope[_ <: AnyRef]) {
 
   /** The name of the site. */
   def name: Name
 
   /** The author of the site. */
-  def owner: Name
+  def owner: Author
 
   /** The base URL to append absolute paths to. */
   def baseUrl: String
 
   /** The entry point for the scopes that describe this site. */
-  def scopes: Scope[_ <: AnyRef]
-
-  /** The types of assets registered with the model. */
-  def assetTypes: Asset.Types = Asset.Types.default
+  def scopes: Scope[T]
 
   /**
    * Return the scope at the specified location.
@@ -44,22 +41,18 @@ trait Site {
    * @param location The location of the scope to return.
    * @return The scope at the specified location.
    */
-  final def find(location: Vector[String]): Scope[_ <: AnyRef] = {
+  final override def apply(location: Location = Location.empty): Scope[_ <: AnyRef] = {
 
     @annotation.tailrec
-    def search(scope: Scope[_ <: AnyRef], remaining: Vector[String]): Scope[_ <: AnyRef] = remaining match {
-      case head +: tail => scope.children find {
-        case (Scope.Select.Matching(h), _) => h.normal == head
-        case (Scope.Select.All, _) => true
-      } match {
-        case Some((_, child)) => search(child, tail)
-        case None => scope
+    def search(scope: Scope[_ <: AnyRef], remaining: Vector[Name]): Scope[_ <: AnyRef] = remaining match {
+      case head +: tail => scope.search(head) match {
+        case Some(child) => search(child, tail)
+        case None => scope.extended
       }
       case _ => scope
     }
 
-    search(scopes, location)
+    search(scopes, location.names)
   }
 
 }
-

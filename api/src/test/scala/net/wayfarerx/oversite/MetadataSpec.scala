@@ -1,5 +1,5 @@
 /*
- * Decoder.scala
+ * MetadataSpec.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -18,22 +18,15 @@
 
 package net.wayfarerx.oversite
 
-import cats.effect.IO
+import org.scalatest.{FlatSpec, Matchers}
 
 /**
- * Defines how an entity is decoded from a document.
- *
- * @tparam T The type of entity being decoded.
+ * Test suite for the metadata implementation.
  */
-trait Decoder[+T <: AnyRef] {
+class MetadataSpec extends FlatSpec with Matchers {
 
-  /**
-   * Attempts to decode an entity from a document.
-   *
-   * @param document The document to decode.
-   * @param ctx The context to decode in.
-   * @return The result of attempting to decode an entity from a document.
-   */
-  def decode(document: Document)(implicit ctx: Context): IO[T]
+  "Metadata" should "accept default arguments" in {
+    Metadata(name"name") shouldBe Metadata(name"name", None, Vector.empty, Some(Pointer.Image(Pointer.Image.default)))
+  }
 
 }

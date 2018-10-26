@@ -27,28 +27,38 @@ package net.wayfarerx.oversite
 final class Name private(val normal: String, val display: String) extends Product2[String, String] {
 
   /* Return the normal form. */
-  override def _1: String =
-    normal
+  override def _1: String = normal
 
   /* Return the display form. */
-  override def _2: String =
-    display
+  override def _2: String = display
+
+  /**
+   * Concatenates this name with the specified name.
+   *
+   * @param that The name to append to this name.
+   * @return This name concatenated with the specified name.
+   */
+  def ++ (that: Name): Name =
+    new Name(s"$normal-${that.normal}", that.display)
 
   /* Ignore the display name in equality checks. */
-  override def canEqual(that: Any): Boolean =
-    Option(that) collect { case Name(n, _) => n == normal } getOrElse false
+  override def canEqual(that: Any): Boolean = that match {
+    case Name(_, _) => true
+    case _ => false
+  }
 
   /* Ignore the display name in equality checks. */
-  override def equals(obj: Any): Boolean =
-    canEqual(obj)
+  override def equals(that: Any): Boolean = that match {
+    case n@Name(nn, _) if n canEqual this => nn == normal
+    case _ => false
+  }
 
   /* Ignore the display name in equality checks. */
   override def hashCode(): Int =
     Name.hashCode ^ normal.hashCode
 
   /* Return the normalized name. */
-  override def toString: String =
-    normal
+  override def toString: String = normal
 
 }
 
@@ -60,17 +70,18 @@ object Name extends (String => Option[Name]) {
   /**
    * Attempts to create a name.
    *
-   * @param display The display name to normalize.
-   * @return A new name if a non-empty name string is found.
+   * @param string The string create a name from.
+   * @return A new name if a valid name was found.
    */
-  override def apply(display: String): Option[Name] = {
-    val normal = display.map {
+  override def apply(string: String): Option[Name] =
+    string.map {
       case c if c.isLetterOrDigit => c.toLower.toString
       case '\'' | '"' | '`' => ""
       case _ => " "
-    }.mkString.trim.replaceAll("""\s+""", "-")
-    if (normal.isEmpty) None else Some(new Name(normal, display))
-  }
+    }.mkString.trim.replaceAll("""\s+""", "-") match {
+      case e if e.isEmpty => None
+      case n => Some(new Name(n, string))
+    }
 
   /**
    * Extracts the contents of a name.
@@ -78,7 +89,6 @@ object Name extends (String => Option[Name]) {
    * @param name The name to extract.
    * @return The contents extracted from the specified name.
    */
-  def unapply(name: Name): Option[(String, String)] =
-    Some(name.normal, name.display)
+  def unapply(name: Name): Option[(String, String)] = Some(name._1, name._2)
 
 }

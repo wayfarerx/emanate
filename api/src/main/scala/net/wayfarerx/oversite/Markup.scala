@@ -21,76 +21,12 @@ package net.wayfarerx.oversite
 /**
  * Base type for all markup elements.
  */
-sealed trait Markup {
-
-  /** Returns a text-only version of this markup element. */
-  def strip: String
-
-}
+sealed trait Markup
 
 /**
  * Definitions of the markup elements.
  */
 object Markup {
-
-  //
-  // Structural markup items.
-  //
-
-  /**
-   * Base type for all structural markup elements.
-   */
-  sealed trait Structure extends Markup
-
-  /**
-   * A markup document.
-   *
-   * @param name        The name of this document.
-   * @param description The description of this document.
-   * @param author      The optional author of this document.
-   * @param content     The main content of this document.
-   * @param sections    The subsections of this document.
-   */
-  case class Document(
-    name: Name,
-    description: Vector[Inline],
-    author: Option[Author],
-    content: Vector[Block],
-    sections: Vector[Section]
-  ) extends Structure {
-
-    /** The title of this document. */
-    def title: String = name.display
-
-    /* Return the stripped content. */
-    override def strip: String =
-      s"#$title\r\n\r\n" + description.map(_.strip).mkString + "\r\n\r\n" +
-        author.map("By " + _ + "\r\n\r\n").getOrElse("") +
-        content.map(_.strip).mkString + sections.map(_.strip).mkString
-
-  }
-
-  /**
-   * A section of a document.
-   *
-   * @param level    The level of this section.
-   * @param header   The header content of this section.
-   * @param content  The main content of this section.
-   * @param sections The subsections of this section.
-   */
-  case class Section(
-    level: Int,
-    header: Vector[Inline],
-    content: Vector[Block],
-    sections: Vector[Section]
-  ) extends Structure {
-
-    /* Return the stripped content. */
-    override def strip: String =
-      "#" * level + header.map(_.strip).mkString + "\r\n\r\n" +
-        content.map(_.strip).mkString + sections.map(_.strip).mkString
-
-  }
 
   //
   // Block markup items.
@@ -104,58 +40,28 @@ object Markup {
   /**
    * A horizontal rule.
    */
-  case object HorizontalRule extends Block {
-
-    /* Return the stripped content. */
-    override def strip: String =
-      "---\r\n\r\n"
-
-  }
+  case object HorizontalRule extends Block
 
   /**
    * A block of inline markup.
    *
    * @param content The inline content.
    */
-  case class Paragraph(
-    content: Vector[Inline]
-  ) extends Block {
-
-    /* Return the stripped content. */
-    override def strip: String =
-      content.map(_.strip).mkString + "\r\n\r\n"
-
-  }
+  case class Paragraph(content: Vector[Inline]) extends Block
 
   /**
    * A code block of inline markup.
    *
    * @param content The inline content.
    */
-  case class CodeBlock(
-    content: Vector[Inline]
-  ) extends Block {
-
-    /* Return the stripped content. */
-    override def strip: String =
-      content.map(_.strip).mkString + "\r\n\r\n"
-
-  }
+  case class CodeBlock(content: Vector[Inline]) extends Block
 
   /**
    * A block quote of other blocks.
    *
    * @param content The block content.
    */
-  case class BlockQuote(
-    content: Vector[Block]
-  ) extends Block {
-
-    /* Return the stripped content. */
-    override def strip: String =
-      content.map(_.strip).mkString
-
-  }
+  case class BlockQuote(content: Vector[Block]) extends Block
 
   /**
    * Base type for list markup.
@@ -177,26 +83,14 @@ object Markup {
      *
      * @param items The items in this list.
      */
-    case class Ordered(items: Vector[Item]) extends List {
-
-      /* Return the stripped items. */
-      override def strip: String =
-        items.zipWithIndex.map(p => s" ${p._2 + 1}. " + p._1.content.map(_.strip).mkString).mkString
-
-    }
+    case class Ordered(items: Vector[Item]) extends List
 
     /**
      * An unordered list.
      *
      * @param items The items in this list.
      */
-    case class Unordered(items: Vector[Item]) extends List {
-
-      /* Return the stripped items. */
-      override def strip: String =
-        items.map(" - " + _.content.map(_.strip).mkString).mkString
-
-    }
+    case class Unordered(items: Vector[Item]) extends List
 
     /**
      * A single item in a list.
@@ -214,16 +108,19 @@ object Markup {
   /**
    * Base type for all inline markup elements.
    */
-  sealed trait Inline extends Markup
+  sealed trait Inline extends Markup {
+
+    /** Returns a text-only version of this markup element. */
+    def strip: String
+
+  }
 
   /**
    * Simple text with no markup.
    *
    * @param content The textual content.
    */
-  case class Text(
-    content: String
-  ) extends Inline {
+  case class Text(content: String) extends Inline {
 
     /* Return the content. */
     override def strip: String = content
@@ -235,13 +132,10 @@ object Markup {
    *
    * @param content The code content.
    */
-  case class Code(
-    content: Vector[Inline]
-  ) extends Inline {
+  case class Code(content: Vector[Inline]) extends Inline {
 
     /* Return the stripped content. */
-    override def strip: String =
-      content.map(_.strip).mkString
+    override def strip: String = content.map(_.strip).mkString
 
   }
 
@@ -250,13 +144,10 @@ object Markup {
    *
    * @param content The emphasized content.
    */
-  case class Emphasized(
-    content: Vector[Inline]
-  ) extends Inline {
+  case class Emphasized(content: Vector[Inline]) extends Inline {
 
     /* Return the stripped content. */
-    override def strip: String =
-      content.map(_.strip).mkString
+    override def strip: String = content.map(_.strip).mkString
 
   }
 
@@ -265,32 +156,24 @@ object Markup {
    *
    * @param content The strong content.
    */
-  case class Strong(
-    content: Vector[Inline]
-  ) extends Inline {
+  case class Strong(content: Vector[Inline]) extends Inline {
 
     /* Return the stripped content. */
-    override def strip: String =
-      content.map(_.strip).mkString
+    override def strip: String = content.map(_.strip).mkString
 
   }
 
   /**
    * A rendered image.
    *
-   * @param asset The image asset.
-   * @param title The optional title.
-   * @param alt   The optional alt text.
+   * @param pointer The image asset.
+   * @param title   The optional title.
+   * @param alt     The optional alt text.
    */
-  case class Image(
-    asset: Asset[Asset.Image],
-    title: Option[String],
-    alt: Option[String]
-  ) extends Inline {
+  case class Image(pointer: Pointer[Pointer.Image], title: Option[String], alt: Option[String]) extends Inline {
 
     /* Return the alt text or title if available. */
-    override def strip: String =
-      alt orElse title getOrElse ""
+    override def strip: String = alt orElse title getOrElse ""
 
   }
 
@@ -306,8 +189,7 @@ object Markup {
     def content: Vector[Inline]
 
     /* Return the stripped content. */
-    final override def strip: String =
-      content.map(_.strip).mkString
+    final override def strip: String = content.map(_.strip).mkString
 
   }
 
@@ -317,55 +199,34 @@ object Markup {
   object Link {
 
     /**
-     * An Local link to a spot in the current page.
+     * An link that jumps to a spot in the current page.
      *
      * @param fragment The fragment to link to.
      * @param title    The optional title.
      * @param content  The content of this link.
      */
-    case class Local(
-      fragment: String,
-      title: Option[String],
-      content: Vector[Inline]
-    ) extends Link
+    case class Jump(fragment: String, title: Option[String], content: Vector[Inline]) extends Link
 
     /**
-     * A link to an entity.
+     * A link that loads a different resource.
      *
-     * @param entity   The entity to link to.
-     * @param fragment The optional fragment.
+     * @param pointer The pointer to link to.
+     * @param title   The optional title.
+     * @param content The content of this link.
+     */
+    case class Load(pointer: Pointer[Pointer.Type], title: Option[String], content: Vector[Inline]) extends Link
+
+    /**
+     * A link that loads a different resource.
+     *
+     * @param pointer  The pointer to link to.
+     * @param fragment The fragment to link to.
      * @param title    The optional title.
      * @param content  The content of this link.
      */
-    case class ToEntity(
-      entity: Entity[AnyRef],
-      fragment: Option[String],
-      title: Option[String],
-      content: Vector[Inline]
-    ) extends Link
-
-    /**
-     * A link to an asset.
-     *
-     * @param asset   The asset to link to.
-     * @param title   The optional title.
-     * @param content The content of this link.
-     */
-    case class ToAsset(
-      asset: Asset[Asset.Type],
-      title: Option[String],
-      content: Vector[Inline]
-    ) extends Link
-
-    /**
-     * An external link to another site.
-     *
-     * @param href    The URL to link to.
-     * @param title   The optional title.
-     * @param content The content of this link.
-     */
-    case class External(
-      href: String,
+    case class LoadAndJump(
+      pointer: Pointer[Pointer.Type],
+      fragment: String,
       title: Option[String],
       content: Vector[Inline]
     ) extends Link

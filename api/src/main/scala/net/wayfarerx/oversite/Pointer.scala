@@ -21,6 +21,8 @@ package net.wayfarerx.oversite
 import collection.immutable.ListSet
 import reflect.ClassTag
 
+import cats.effect.IO
+
 /**
  * Base type for all pointers.
  *
@@ -107,7 +109,7 @@ object Pointer {
   sealed trait Internal[+T <: Pointer.Type] extends Pointer[T] {
 
     /** The prefix of this pointer. */
-    def prefix: Prefix
+    def scope: Prefix
 
     /**
      * Returns a copy of this pointer with the specified prefix.
@@ -169,17 +171,17 @@ object Pointer {
    *
    * @tparam T The type of data that is pointed to.
    * @param tpe    The type of data that is pointed to.
-   * @param prefix The prefix of this pointer.
+   * @param scope The scope of this pointer.
    * @param query  The query to search with.
    */
   case class Search[T <: Pointer.Type](
     tpe: T,
-    prefix: Prefix,
+    scope: Prefix,
     query: Name
   ) extends Internal[T] {
 
     /* Return a new copy. */
-    override def withPrefix(prefix: Prefix): Search[T] = copy(prefix = prefix)
+    override def withPrefix(prefix: Prefix): Search[T] = copy(scope = prefix)
 
   }
 
@@ -202,7 +204,7 @@ object Pointer {
        * @tparam U The type to narrow to.
        * @return The narrowed entity pointer.
        */
-      def narrow[U <: T : ClassTag]: Search[Entity[U]] = Search(Entity[U], self.prefix, self.query)
+      def narrow[U <: T : ClassTag]: Search[Entity[U]] = Search(Entity[U], self.scope, self.query)
 
     }
 
@@ -226,20 +228,20 @@ object Pointer {
    * @tparam T The type of data that is pointed to.
    * @tparam S The type of suffix used.
    * @param tpe    The type of data that is pointed to.
-   * @param prefix The prefix of this pointer.
+   * @param scope The prefix of this pointer.
    * @param suffix The suffix of this pointer.
    */
   case class Target[T <: Pointer.Type.Aux[S], S](
     tpe: T,
-    prefix: Prefix,
+    scope: Prefix,
     suffix: S
   ) extends Internal[T] with Resolved[T] {
 
     /* Return a new copy. */
-    override def withPrefix(prefix: Prefix): Target[T, S] = copy(prefix = prefix)
+    override def withPrefix(prefix: Prefix): Target[T, S] = copy(scope = prefix)
 
     /* Use the type to construct the hypertext reference. */
-    override def href: String = tpe.href(prefix, suffix)
+    override def href: String = tpe.href(scope, suffix)
 
   }
 
@@ -262,7 +264,7 @@ object Pointer {
        * @tparam U The type to narrow to.
        * @return The narrowed entity pointer.
        */
-      def narrow[U <: T : ClassTag]: Target[Entity[U], Unit] = Target(Entity[U], self.prefix, ())
+      def narrow[U <: T : ClassTag]: Target[Entity[U], Unit] = Target(Entity[U], self.scope, ())
 
     }
 
@@ -323,6 +325,18 @@ object Pointer {
 
     /** The root prefix. */
     val root = Absolute(Location.empty)
+
+    /**
+     * Returns the prefix that moves from a location to a location.
+     *
+     * @param from The location to move from.
+     * @param to The location to move to.
+     * @return The prefix that moves from a location to a location.
+     */
+    def apply(from: Location, to: Location): Prefix = {
+      val path = from.pathTo(to)
+      if (path.elements.length <= to.path.elements.length) Relative(path) else Absolute(to)
+    }
 
     /**
      * Parses a prefix ending in '/' and also returns any meaningful trailing text.
@@ -514,6 +528,9 @@ object Pointer {
    */
   object Entity {
 
+    /** An entity that supports all references. */
+    val anyRef: Entity[AnyRef] = Entity[AnyRef]
+
     /**
      * Creates a new entity type.
      *
@@ -521,7 +538,20 @@ object Pointer {
      * @return A new entity type.
      */
     def apply[T <: AnyRef : ClassTag]: Entity[T] =
-      Entity[T](implicitly[ClassTag[T]].runtimeClass)
+      new Entity[T](implicitly[ClassTag[T]].runtimeClass)
+
+
+    /**
+     * Creates a new entity type with the specified class info.
+     *
+     * @tparam T The type of the underlying entity.
+     * @return A new entity type with the specified class info.
+     */
+    def create[T <: AnyRef : ClassTag](classInfo: Class[_]): IO[Entity[T]] = {
+      val tagged = implicitly[ClassTag[T]].runtimeClass
+      if (tagged.isAssignableFrom(classInfo)) IO.pure(new Entity[T](classInfo))
+      else IO.raiseError(new IllegalArgumentException(s"Cannot assign ${classInfo.getName} to ${tagged.getName}"))
+    }
 
   }
 

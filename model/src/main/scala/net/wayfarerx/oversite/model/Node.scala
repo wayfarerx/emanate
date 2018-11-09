@@ -15,6 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package net.wayfarerx.oversite
 package model
 
@@ -60,6 +61,9 @@ sealed trait Node[T <: AnyRef] extends Context {
   /** The resource collection to load from. */
   def resources: Resources
 
+  /** The index of nodes in the site. */
+  def index: IO[Index]
+
   /** Returns the identifiers for this node. */
   final def identifiers: IO[Vector[Name]] = _identifiers()
 
@@ -87,61 +91,37 @@ sealed trait Node[T <: AnyRef] extends Context {
   }
 
   /* Resolve internal pointers. */
-  final override def resolve[P <: Pointer.Type.Aux[S], S](pointer: Pointer.Internal[P]): IO[Pointer.Target[P, S]] = {
-    val (node, path) = {
-      pointer.prefix match {
-        case Pointer.Prefix.Relative(p) => find(p)
-        case Pointer.Prefix.Absolute(loc) =>
-          val common = location commonPrefixWith loc
-          find(Path(
-            Vector.fill(location.path.elements.length - common.path.elements.length)(Path.Parent) ++
-              loc.path.elements.drop(common.path.elements.length)
-          ))
+  final override def resolve[P <: Pointer.Type.Aux[S], S](pointer: Pointer.Internal[P]): IO[Pointer.Target[P, S]] =
+    pointer.tpe match {
+      case e@Pointer.Entity(_) => pointer match {
+        case Pointer.Search(_, from, query) => searchForEntity(e, from, query) map { node =>
+          Pointer.Target(e, Pointer.Prefix(location, node.location), ()).asInstanceOf[Pointer.Target[P, S]]
+        }
+        case Pointer.Target(_, at, _) => findEntity(e, at) map { node =>
+          Pointer.Target(e, Pointer.Prefix(location, node.location), ()).asInstanceOf[Pointer.Target[P, S]]
+        }
       }
-    } getOrElse this -> path
-    val v = pointer.tpe match {
-      case e@Pointer.Entity(_) =>
-        val vv =
-          if (path.normalized.elements.isEmpty) IO.pure(Pointer.Target(e, Pointer.Prefix.empty, ()))
-          else IO.raiseError(new IllegalArgumentException(s"Pointer points to nothing: $pointer."))
-        vv
-      case asset: Pointer.Asset =>
+      case a: Pointer.Asset =>
         ???
     }
-
-    v
-    node
-    path
-    ???
-  }
 
   /* Resolve external pointers. */
   final override def resolve[P <: Pointer.Asset](pointer: Pointer.External[P]): IO[Pointer.External[P]] =
     IO.pure(pointer)
 
-  final override def load[E <: AnyRef](entity: Pointer.Internal[Pointer.Entity[E]]): IO[E] = for {
-    resolved <- resolve(entity)
-  } yield {
-
+  /* Load the specified entity. */
+  final override def load[E <: AnyRef](pointer: Pointer.Internal[Pointer.Entity[E]]): IO[E] = {
     ???
   }
 
+  /* Attempt to load the alt text for an image. */
   final override def alt(image: Pointer.Internal[Image]): IO[Option[String]] =
     resolve(image) map { _ =>
-
-      //img
       ???
     }
 
   //
-  // Search method templates.
-  //
-
-  protected def find(path: Path): Option[(Node[_ <: AnyRef], Path)] =
-    if (path.normalized.elements.isEmpty) Some(this -> Path.empty) else None
-
-  //
-  // Type-specific behavior implementations.
+  // Helper methods.
   //
 
   /** Loads the identifiers of this node. */
@@ -153,6 +133,37 @@ sealed trait Node[T <: AnyRef] extends Context {
       })
     }(s => IO(s.close()))
   } yield e
+
+  /* Attempts to find the specified entity node. */
+  private def findEntity[E <: AnyRef](entity: Pointer.Entity[E], at: Pointer.Prefix): IO[Node[E]] = {
+    at match {
+      case Pointer.Prefix.Relative(p) => location :++ p
+      case Pointer.Prefix.Absolute(l) => Some(l)
+    }
+  } map (t => index map (i => selectEntity(entity, i(t).toSeq))) getOrElse IO.pure(None) flatMap {
+    case Some(r) => IO.pure(r)
+    case None => raise(s"${entity.classInfo.getSimpleName} not found at $at")
+  }
+
+  /* Attempts to search for the specified entity node. */
+  private def searchForEntity[E <: AnyRef](entity: Pointer.Entity[E], from: Pointer.Prefix, query: Name): IO[Node[E]] =
+    findEntity(Pointer.Entity.anyRef, from) flatMap { node =>
+      index map (i => selectEntity(entity, i(query, node.location))) flatMap {
+        case Some(r) => IO.pure(r)
+        case None => raise(s"${entity.classInfo.getSimpleName} not found at $from$query")
+      }
+    }
+
+  private def selectEntity[E <: AnyRef](entity: Pointer.Entity[E], nodes: Seq[Node[_ <: AnyRef]]): Option[Node[E]] =
+    nodes collectFirst {
+      case n if entity.classInfo.isAssignableFrom(n.scope.classTag.runtimeClass) => n.asInstanceOf[Node[E]]
+    }
+
+  private def findAsset[A <: Pointer.Asset](pointer: Pointer.Internal[A]): IO[(Node[_], String)] =
+    ???
+
+  private def raise[E](message: String): IO[E] =
+    IO.raiseError(new IllegalArgumentException(message))
 
 }
 
@@ -223,7 +234,7 @@ object Node {
     /* Return the parent's stylesheets, mapped to the child's location, and the child's stylesheets. */
     final override lazy val stylesheets: Vector[Scope.Styles.Reference] =
       parent.stylesheets.map {
-        case Scope.Styles.Internal(p) => Scope.Styles.Internal(p.prefix match {
+        case Scope.Styles.Internal(p) => Scope.Styles.Internal(p.scope match {
           case Pointer.Prefix.Relative(path) => p.withPrefix(Pointer.Prefix.Relative(Path.Parent +: path))
           case _ => p
         })
@@ -235,6 +246,9 @@ object Node {
 
     /* Return the parent's resources. */
     final override def resources: Resources = parent.resources
+
+    /* Return the parent's index. */
+    final override def index: IO[Index] = parent.index
 
     /* Use the loaded identifier and this child's name. */
     final override protected def loadIdentifiers: IO[Vector[Name]] =
@@ -248,6 +262,12 @@ object Node {
    * @tparam T The underlying type of entity.
    */
   case class Root[T <: AnyRef](site: Site[T], resource: URL, resources: Resources) extends Parent[T] {
+
+    /** The index loaded for this node. */
+    final private val _index = Cached(Index(this))
+
+    /** Returns the index loaded for this node. */
+    override def index: IO[Index] = _index()
 
     override def location: Location = Location.empty
 

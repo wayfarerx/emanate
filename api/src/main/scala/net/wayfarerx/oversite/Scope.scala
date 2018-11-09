@@ -28,10 +28,12 @@ import cats.effect.IO
  * @tparam T The type of entities contained in this scope.
  * @param stylesheets The stylesheet collection for this scope.
  * @param children    The scope selectors for children of this scope.
+ * @param indexed     True if this scope is indexed.
  */
 case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
   stylesheets: Vector[Scope.Styles],
-  children: Vector[(Scope.Select, Scope[_ <: AnyRef])]
+  children: Vector[(Scope.Select, Scope[_ <: AnyRef])],
+  indexed: Boolean
 ) {
 
   /** The type of entities contained in this scope. */
@@ -94,7 +96,7 @@ object Scope {
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     children: (Select, Scope[_ <: AnyRef])*
   ): Scope[T] =
-    Scope(Vector.empty, children.toVector)
+    Scope(Vector.empty, children.toVector, indexed = true)
 
   /**
    * Creates a scope with stylesheets and all children using the specified child scope.
@@ -122,7 +124,7 @@ object Scope {
     stylesheets: Vector[Styles],
     children: (Select, Scope[_ <: AnyRef])*
   ): Scope[T] =
-    Scope(stylesheets, children.toVector)
+    Scope(stylesheets, children.toVector, indexed = true)
 
   /**
    * Base type for scope selectors.

@@ -33,12 +33,21 @@ final class Location private(val path: Path) extends Product1[Path] {
   override def _1: Path = path
 
   /**
-   * Extends this location.
+   * Extends this location with a name.
    *
    * @param name The name to extend this location with.
    * @return The extended location.
    */
   def :+(name: Name): Location = new Location(path :+ name)
+
+  /**
+   * Attempts to extend this location with a path.
+   *
+   * @param path The path to extend this location with.
+   * @return The extended location.
+   */
+  def :++(path: Path): Option[Location] =
+    Location(this.path ++ path)
 
   /**
    * Returns the longest prefix shared between this and that location.
@@ -53,6 +62,20 @@ final class Location private(val path: Path) extends Product1[Path] {
     new Location(Path(self.take(max) zip other.take(max) takeWhile {
       case (ours, theirs) => ours == theirs
     } map (_._1): _*))
+  }
+
+  /**
+   * Returns the path that moves from this location to that location.
+   *
+   * @param that The location to move to.
+   * @return The path that moves from this location to that location.
+   */
+  def pathTo(that: Location): Path = {
+    val common = commonPrefixWith(that)
+    Path(
+      Vector.fill(path.elements.length - common.path.elements.length)(Path.Parent) ++
+        that.path.elements.drop(common.path.elements.length)
+    )
   }
 
   /**

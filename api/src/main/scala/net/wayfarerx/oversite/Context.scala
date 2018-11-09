@@ -74,17 +74,17 @@ trait Context {
    * Attempts to load the data associated with the specified entity.
    *
    * @tparam T The type of entity to load.
-   * @param entity The internal pointer to the entity to load.
+   * @param pointer The internal pointer to the entity to load.
    * @return The result of attempting to load the data for the specified entity.
    */
-  def load[T <: AnyRef](entity: Pointer.Internal[Pointer.Entity[T]]): IO[T]
+  def load[T <: AnyRef](pointer: Pointer.Internal[Pointer.Entity[T]]): IO[T]
 
   /**
-   * Attempts to load the alt-text for a specific image.
+   * Attempts to load the alt-text for the specific image.
    *
-   * @param image The resolved pointer to the image to load the alt-text for.
+   * @param pointer The internal pointer to the image to load the alt-text for.
    * @return The result of attempting to load the alt-text for a specific image.
    */
-  def alt(image: Pointer.Internal[Pointer.Image]): IO[Option[String]]
+  def alt(pointer: Pointer.Internal[Pointer.Image]): IO[Option[String]]
 
 }

@@ -22,8 +22,8 @@ package model
 import java.net.URL
 
 import io.{Codec, Source}
+
 import cats.effect.IO
-import net.wayfarerx.oversite.Pointer.Image
 
 /**
  * Base type for all nodes.
@@ -35,18 +35,22 @@ sealed trait Node[T <: AnyRef] extends Context {
   /** Publish this node as the implicit context. */
   final protected implicit def context: Context = this
 
-  //
-  // The state of this node.
-  //
-
-  /** The identifiers for this node. */
-  final private val _identifiers = Cached(loadIdentifiers)
+  /** The title of this node. */
+  private val _title = Cached(IO(Source.fromURL(resource)(Codec.UTF8)).bracket { source =>
+    IO(source.getLines.map(_.trim).dropWhile(_.isEmpty).buffered.headOption match {
+      case Some(head) if head startsWith "#" => Name(head substring 1)
+      case None => None
+    })
+  }(s => IO(s.close())))
 
   /** The document loaded for this node. */
-  final private val _document = Cached.Soft(Parser parse resource)
+  private val _document = Cached.Soft(Parser parse resource)
 
   /** The entity decoded for this node. */
-  final private val _entity = Cached.Soft(document flatMap scope.decoder.decode)
+  private val _entity = Cached.Soft(document flatMap scope.decoder.decode)
+
+  /** The cache ot alternate text for images. */
+  private lazy val _altText = new AltText(resources)
 
   //
   // The API for all nodes.
@@ -65,13 +69,55 @@ sealed trait Node[T <: AnyRef] extends Context {
   def index: IO[Index]
 
   /** Returns the identifiers for this node. */
-  final def identifiers: IO[Vector[Name]] = _identifiers()
+  def identifiers: IO[Vector[Name]] = title map (_.toVector)
+
+  /** Returns the identifiers for this node. */
+  final def title: IO[Option[Name]] = _title()
 
   /** Returns the document loaded for this node. */
   final def document: IO[Document] = _document()
 
   /** Returns the entity decoded for this node. */
   final def entity: IO[T] = _entity()
+
+  /**
+   * Attempts to return the alt-text for the specified image.
+   *
+   * @param path The path to the image.
+   * @param file The file name of the image.
+   * @return The alt-text for the image if it is available.
+   */
+  final def altText(path: Path, file: String): IO[Option[String]] = _altText(path, file)
+
+  /**
+   * Returns true if this node generates the specified file.
+   *
+   * @param path The path to check for file generation in.
+   * @param file The file to check for generation in the path.
+   * @return True if this node generates the specified file.
+   */
+  final def generates(path: Path, file: String): Boolean =
+    scope.stylesheets exists {
+      case Scope.Styles.Generated(n, _) => path match {
+        case Path(Vector(Path.Child(p))) if p == Pointer.Stylesheet.prefix =>
+          file == s"$n.${Pointer.Stylesheet.extension}"
+        case _ => false
+      }
+      case _ => false
+    }
+
+  /**
+   * Returns true if this node generates the specified file.
+   *
+   * @param asset The asset type to check for generation.
+   * @param name  The name to check for generation.
+   * @return True if this node generates the specified file.
+   */
+  final def generates(asset: Pointer.Asset, name: Name): Boolean =
+    asset == Pointer.Stylesheet && scope.stylesheets.exists {
+      case Scope.Styles.Generated(n, _) => n == name
+      case _ => false
+    }
 
   //
   // The context implementations for all nodes.
@@ -95,14 +141,20 @@ sealed trait Node[T <: AnyRef] extends Context {
     pointer.tpe match {
       case e@Pointer.Entity(_) => pointer match {
         case Pointer.Search(_, from, query) => searchForEntity(e, from, query) map { node =>
-          Pointer.Target(e, Pointer.Prefix(location, node.location), ()).asInstanceOf[Pointer.Target[P, S]]
+          Pointer.Target(e.asInstanceOf[P], Pointer.Prefix(location, node.location), ().asInstanceOf[S])
         }
-        case Pointer.Target(_, at, _) => findEntity(e, at) map { node =>
-          Pointer.Target(e, Pointer.Prefix(location, node.location), ()).asInstanceOf[Pointer.Target[P, S]]
+        case Pointer.Target(_, at, _) => targetEntity(e, at) map { node =>
+          Pointer.Target(e.asInstanceOf[P], Pointer.Prefix(location, node.location), ().asInstanceOf[S])
         }
       }
-      case a: Pointer.Asset =>
-        ???
+      case a: Pointer.Asset => pointer match {
+        case Pointer.Search(_, from, query) => searchForAsset(a, from, query) map { case (n, p, s) =>
+          Pointer.Target(a.asInstanceOf[P], Pointer.Prefix(location, n.location), (p.toString + s).asInstanceOf[S])
+        }
+        case Pointer.Target(_, prefix, suffix) => targetAsset(prefix, suffix.toString) map { case (n, p, s) =>
+          Pointer.Target(a.asInstanceOf[P], Pointer.Prefix(location, n.location), (p.toString + s).asInstanceOf[S])
+        }
+      }
     }
 
   /* Resolve external pointers. */
@@ -110,59 +162,186 @@ sealed trait Node[T <: AnyRef] extends Context {
     IO.pure(pointer)
 
   /* Load the specified entity. */
-  final override def load[E <: AnyRef](pointer: Pointer.Internal[Pointer.Entity[E]]): IO[E] = {
-    ???
+  final override def load[E <: AnyRef](pointer: Pointer.Internal[Pointer.Entity[E]]): IO[E] = pointer match {
+    case Pointer.Search(_, from, query) =>
+      searchForEntity(pointer.tpe, from, query) flatMap (_.entity map (_.asInstanceOf[E]))
+    case Pointer.Target(_, at, _) =>
+      targetEntity(pointer.tpe, at) flatMap (_.entity map (_.asInstanceOf[E]))
   }
 
   /* Attempt to load the alt text for an image. */
-  final override def alt(image: Pointer.Internal[Image]): IO[Option[String]] =
-    resolve(image) map { _ =>
-      ???
-    }
+  final override def alt(image: Pointer.Internal[Pointer.Image]): IO[Option[String]] = (image match {
+    case Pointer.Search(_, from, query) =>
+      searchForAsset(image.tpe, from, query)
+    case Pointer.Target(_, at, file) =>
+      targetAsset(at, file.toString)
+  }) flatMap { case (node, path, file) => node.altText(path, file) }
 
   //
   // Helper methods.
   //
 
-  /** Loads the identifiers of this node. */
-  protected def loadIdentifiers: IO[Vector[Name]] = for {
-    e <- IO(Source.fromURL(resource)(Codec.UTF8)).bracket { source =>
-      IO(source.getLines.map(_.trim).dropWhile(_.isEmpty).buffered.headOption match {
-        case Some(head) if head startsWith "#" => Name(head substring 1).toVector
-        case None => Vector.empty
-      })
-    }(s => IO(s.close()))
-  } yield e
-
-  /* Attempts to find the specified entity node. */
-  private def findEntity[E <: AnyRef](entity: Pointer.Entity[E], at: Pointer.Prefix): IO[Node[E]] = {
-    at match {
-      case Pointer.Prefix.Relative(p) => location :++ p
-      case Pointer.Prefix.Absolute(l) => Some(l)
+  /**
+   * Targets the specified entity node.
+   *
+   * @param entity The type of entity node to find.
+   * @param at     The prefix that specifies the desired entity node.
+   * @return The desired entity node.
+   */
+  private def targetEntity(
+    entity: Pointer.Entity[_ <: AnyRef],
+    at: Pointer.Prefix
+  ): IO[Node[_ <: AnyRef]] =
+    locate(at) map (l => index map (i => selectEntity(entity, i(l).toSeq))) getOrElse IO.pure(None) flatMap {
+      case Some(r) => IO.pure(r)
+      case None => raise(s"Entity ${entity.classInfo.getSimpleName} not found at $at")
     }
-  } map (t => index map (i => selectEntity(entity, i(t).toSeq))) getOrElse IO.pure(None) flatMap {
-    case Some(r) => IO.pure(r)
-    case None => raise(s"${entity.classInfo.getSimpleName} not found at $at")
-  }
 
-  /* Attempts to search for the specified entity node. */
-  private def searchForEntity[E <: AnyRef](entity: Pointer.Entity[E], from: Pointer.Prefix, query: Name): IO[Node[E]] =
-    findEntity(Pointer.Entity.anyRef, from) flatMap { node =>
-      index map (i => selectEntity(entity, i(query, node.location))) flatMap {
+  /**
+   * Searches for the specified entity node.
+   *
+   * @param entity The type of entity node to find.
+   * @param from   The prefix that specifies the node to search from.
+   * @return The desired entity node.
+   */
+  private def searchForEntity(
+    entity: Pointer.Entity[_ <: AnyRef],
+    from: Pointer.Prefix,
+    query: Name
+  ): IO[Node[_ <: AnyRef]] =
+    targetEntity(Pointer.Entity[AnyRef], from) flatMap { node =>
+      index map (idx => selectEntity(entity, idx(query, node.location))) flatMap {
         case Some(r) => IO.pure(r)
-        case None => raise(s"${entity.classInfo.getSimpleName} not found at $from$query")
+        case None => raise(s"Entity ${entity.classInfo.getSimpleName} not found at $from$query")
       }
     }
 
-  private def selectEntity[E <: AnyRef](entity: Pointer.Entity[E], nodes: Seq[Node[_ <: AnyRef]]): Option[Node[E]] =
-    nodes collectFirst {
-      case n if entity.classInfo.isAssignableFrom(n.scope.classTag.runtimeClass) => n.asInstanceOf[Node[E]]
+  /**
+   * Selects the first node that is assignable to the specified entity.
+   *
+   * @param entity The entity to assign to.
+   * @param nodes  The nodes to assign from.
+   * @return The first node that is assignable to the specified entity.
+   */
+  private def selectEntity(
+    entity: Pointer.Entity[_ <: AnyRef],
+    nodes: Seq[Node[_ <: AnyRef]]
+  ): Option[Node[_ <: AnyRef]] =
+    nodes find (n => entity.classInfo.isAssignableFrom(n.scope.classTag.runtimeClass))
+
+  /**
+   * Targets the specified asset.
+   *
+   * @param prefix The prefix of the targeted asset.
+   * @param suffix The suffix of the targeted asset.
+   * @return The desired asset target.
+   */
+  private def targetAsset(
+    prefix: Pointer.Prefix,
+    suffix: String
+  ): IO[(Node[_ <: AnyRef], Path, String)] =
+    canonicalAsset(prefix, suffix) flatMap { case (node, path, file) =>
+      if (node.generates(path, file)) IO.pure((node, path, file))
+      else resources find node.location.toString + path + file flatMap {
+        _ map (_ => IO.pure((node, path, file))) getOrElse[IO[(Node[_ <: AnyRef], Path, String)]]
+          raise(s"Cannot find asset ${node.location}$path$file")
+      }
     }
 
-  private def findAsset[A <: Pointer.Asset](pointer: Pointer.Internal[A]): IO[(Node[_], String)] =
-    ???
+  /**
+   * Searches for the specified asset.
+   *
+   * @param asset The type of asset to find.
+   * @param from  The prefix that specifies the node to search from.
+   * @param query The file name query to search for.
+   * @return The desired asset target.
+   */
+  private def searchForAsset(
+    asset: Pointer.Asset,
+    from: Pointer.Prefix,
+    query: Name
+  ): IO[(Node[_ <: AnyRef], Path, String)] =
+    canonicalAsset(from, "") flatMap { case (start, path, _) =>
 
-  private def raise[E](message: String): IO[E] =
+      /* Search for all the specified extensions. */
+      def searchExtensions(node: Node[_ <: AnyRef], remaining: Vector[String]): IO[Option[String]] =
+        remaining match {
+          case head +: tail =>
+            val file = s"$query.$head"
+            if (node.generates(path, file)) IO.pure(Some(file))
+            else resources find node.location.toString + path + file flatMap {
+              _ map (_ => IO.pure(Some(file))) getOrElse searchExtensions(node, tail)
+            }
+          case _ => IO.pure(None)
+        }
+
+      /* Search the specified node and all of its parents. */
+      def searchUpwards(node: Node[_ <: AnyRef]): IO[Option[(Node[_ <: AnyRef], Path, String)]] =
+        searchExtensions(node, asset.extensions.toVector) flatMap {
+          case Some(file) =>
+            IO.pure(Some((node, path, file)))
+          case None =>
+            if (path.elements.isEmpty && node.generates(asset, query)) {
+              IO.pure(Some((node, Path(asset.prefix), s"$query.${asset.extensions.head}")))
+            } else node match {
+              case child: Node.Child[_] => searchUpwards(child.parent)
+              case _ => IO.pure(None)
+            }
+        }
+
+      searchUpwards(start) flatMap {
+        case Some(result) => IO.pure(result)
+        case None => raise(s"Cannot find ${asset.default} asset $from?$path")
+      }
+    }
+
+  /**
+   * Converts an asset target into a canonical node and resource path.
+   *
+   * @param prefix The prefix of the asset.
+   * @param suffix The suffix of the asset.
+   * @return The contextualized node and resource path for the targeted asset.
+   */
+  private def canonicalAsset(prefix: Pointer.Prefix, suffix: Path.Regular): IO[(Node[_ <: AnyRef], Path, String)] = {
+
+    /* Search for a context recursively. */
+    @annotation.tailrec
+    def contextualize(idx: Index, at: Location, path: Path): (Node[_ <: AnyRef], Path) = idx(at) match {
+      case Some(n) => n -> path
+      case None => contextualize(idx, at.parent.get, at.path.elements.last +: path)
+    }
+
+    locate(prefix) flatMap { l =>
+      suffix lastIndexOf '/' match {
+        case i if i >= 0 => l :++ Path(suffix.substring(0, i)) map (_ -> suffix.substring(i + 1))
+        case _ => Some(l -> suffix.string)
+      }
+    } map { case (at, file) =>
+      index map { idx =>
+        val (node, path) = contextualize(idx, at, Path.empty)
+        (node, path, file)
+      }
+    } getOrElse raise(s"Unable to contextualize asset $prefix$suffix")
+  }
+
+  /**
+   * Returns the location for a prefix.
+   *
+   * @param prefix The prefix to return the location for.
+   * @return The location if the prefix is valid.
+   */
+  private def locate(prefix: Pointer.Prefix): Option[Location] = prefix match {
+    case Pointer.Prefix.Relative(p) => location :++ p
+    case Pointer.Prefix.Absolute(l) => Some(l)
+  }
+
+  /**
+   * Raises an error IO.
+   *
+   * @param message The error message.
+   * @return An error IO.
+   */
+  private def raise(message: String): IO[Nothing] =
     IO.raiseError(new IllegalArgumentException(message))
 
 }
@@ -251,8 +430,7 @@ object Node {
     final override def index: IO[Index] = parent.index
 
     /* Use the loaded identifier and this child's name. */
-    final override protected def loadIdentifiers: IO[Vector[Name]] =
-      super.loadIdentifiers map (_ :+ name)
+    final override def identifiers: IO[Vector[Name]] = super.identifiers map (name +: _)
 
   }
 
@@ -260,20 +438,29 @@ object Node {
    * The root node in a tree.
    *
    * @tparam T The underlying type of entity.
+   * @param site      The site behind this root node.
+   * @param resource  The root resource.
+   * @param resources The resource collection to load from.
    */
   case class Root[T <: AnyRef](site: Site[T], resource: URL, resources: Resources) extends Parent[T] {
 
-    /** The index loaded for this node. */
-    final private val _index = Cached(Index(this))
+    /** The authors loaded for all nodes. */
+    private val _authors = Cached(Authors(resources, "authors.txt"))
 
-    /** Returns the index loaded for this node. */
+    /** The index loaded for all nodes. */
+    private val _index = Cached(Index(this))
+
+    /* Return the index loaded for this node. */
     override def index: IO[Index] = _index()
 
+    /* Always at the empty location. */
     override def location: Location = Location.empty
 
+    /* Return the root scope. */
     override def scope: Scope[T] = site.scopes
 
-    override def resolve(author: Author): IO[Author] = ???
+    /* Resolve an author in the site. */
+    override def resolve(author: Author): IO[Author] = _authors() map (_ (author.name) getOrElse author)
 
   }
 
@@ -281,6 +468,9 @@ object Node {
    * A branch node that both contains and is contained by other nodes.
    *
    * @tparam T The underlying type of entity.
+   * @param parent The parent of this branch.
+   * @param name   The name of this branch.
+   * @param scope  The scope of this branch.
    */
   case class Branch[T <: AnyRef](parent: Parent[_ <: AnyRef], name: Name, scope: Scope[T], resource: URL)
     extends Parent[T] with Child[T]
@@ -289,8 +479,10 @@ object Node {
    * A leaf node that is contained by other nodes.
    *
    * @tparam T The underlying type of entity.
+   * @param parent The parent of this branch.
+   * @param name   The name of this branch.
+   * @param scope  The scope of this branch.
    */
-  case class Leaf[T <: AnyRef](parent: Parent[_ <: AnyRef], name: Name, scope: Scope[T], resource: URL)
-    extends Child[T]
+  case class Leaf[T <: AnyRef](parent: Parent[_ <: AnyRef], name: Name, scope: Scope[T], resource: URL) extends Child[T]
 
 }

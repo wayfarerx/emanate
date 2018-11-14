@@ -303,6 +303,9 @@ object Pointer {
     /** The type of this prefix. */
     type PrefixType >: this.type <: Prefix
 
+    /** Returns the parent of this prefix. */
+    def parent: Option[Prefix]
+
     /**
      * Drops the last name in this prefix if it matches any known asset name.
      *
@@ -359,6 +362,10 @@ object Pointer {
       /* Set the prefix type. */
       override type PrefixType = Relative
 
+      /* Drop the last name. */
+      override def parent: Option[Prefix] =
+        Some(Relative(path.parent))
+
       /* Drop the last name if it matches an asset prefix. */
       override def typed: Option[(PrefixType, Asset)] =
         path.elements match {
@@ -380,6 +387,10 @@ object Pointer {
 
       /* Set the prefix type. */
       override type PrefixType = Absolute
+
+      /* Drop the last name. */
+      override def parent: Option[Prefix] =
+        location.parent map Absolute
 
       /* Drop the last name if it matches an asset prefix. */
       override def typed: Option[(PrefixType, Asset)] =
@@ -527,9 +538,6 @@ object Pointer {
    * Factory for entity types.
    */
   object Entity {
-
-    /** An entity that supports all references. */
-    val anyRef: Entity[AnyRef] = Entity[AnyRef]
 
     /**
      * Creates a new entity type.
@@ -709,8 +717,11 @@ object Pointer {
     /* The default name. */
     override val default: Name = name"page"
 
+    /** The singular extension to search for. */
+    val extension: String = "html"
+
     /* The extensions to search for. */
-    override val extensions: ListSet[String] = ListSet("html")
+    override val extensions: ListSet[String] = ListSet(extension)
 
   }
 
@@ -747,8 +758,11 @@ object Pointer {
     /* The default name. */
     override val default: Name = name"stylesheet"
 
+    /** The singular extension to search for. */
+    val extension: String = "css"
+
     /* The extensions to search for. */
-    override val extensions: ListSet[String] = ListSet("css")
+    override val extensions: ListSet[String] = ListSet(extension)
 
   }
 
@@ -766,8 +780,11 @@ object Pointer {
     /* The default name. */
     override val default: Name = name"script"
 
+    /** The singular extension to search for. */
+    val extension: String = "js"
+
     /* The extensions to search for. */
-    override val extensions: ListSet[String] = ListSet("js")
+    override val extensions: ListSet[String] = ListSet(extension)
 
   }
 

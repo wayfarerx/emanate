@@ -21,8 +21,6 @@ package net.wayfarerx.oversite
 import collection.immutable.ListSet
 import reflect.ClassTag
 
-import cats.effect.IO
-
 /**
  * Base type for all pointers.
  *
@@ -170,9 +168,9 @@ object Pointer {
    * A pointer that searches for an internal target.
    *
    * @tparam T The type of data that is pointed to.
-   * @param tpe    The type of data that is pointed to.
+   * @param tpe   The type of data that is pointed to.
    * @param scope The scope of this pointer.
-   * @param query  The query to search with.
+   * @param query The query to search with.
    */
   case class Search[T <: Pointer.Type](
     tpe: T,
@@ -228,7 +226,7 @@ object Pointer {
    * @tparam T The type of data that is pointed to.
    * @tparam S The type of suffix used.
    * @param tpe    The type of data that is pointed to.
-   * @param scope The prefix of this pointer.
+   * @param scope  The prefix of this pointer.
    * @param suffix The suffix of this pointer.
    */
   case class Target[T <: Pointer.Type.Aux[S], S](
@@ -303,9 +301,6 @@ object Pointer {
     /** The type of this prefix. */
     type PrefixType >: this.type <: Prefix
 
-    /** Returns the parent of this prefix. */
-    def parent: Option[Prefix]
-
     /**
      * Drops the last name in this prefix if it matches any known asset name.
      *
@@ -333,7 +328,7 @@ object Pointer {
      * Returns the prefix that moves from a location to a location.
      *
      * @param from The location to move from.
-     * @param to The location to move to.
+     * @param to   The location to move to.
      * @return The prefix that moves from a location to a location.
      */
     def apply(from: Location, to: Location): Prefix = {
@@ -362,10 +357,6 @@ object Pointer {
       /* Set the prefix type. */
       override type PrefixType = Relative
 
-      /* Drop the last name. */
-      override def parent: Option[Prefix] =
-        Some(Relative(path.parent))
-
       /* Drop the last name if it matches an asset prefix. */
       override def typed: Option[(PrefixType, Asset)] =
         path.elements match {
@@ -387,10 +378,6 @@ object Pointer {
 
       /* Set the prefix type. */
       override type PrefixType = Absolute
-
-      /* Drop the last name. */
-      override def parent: Option[Prefix] =
-        location.parent map Absolute
 
       /* Drop the last name if it matches an asset prefix. */
       override def typed: Option[(PrefixType, Asset)] =
@@ -547,19 +534,6 @@ object Pointer {
      */
     def apply[T <: AnyRef : ClassTag]: Entity[T] =
       new Entity[T](implicitly[ClassTag[T]].runtimeClass)
-
-
-    /**
-     * Creates a new entity type with the specified class info.
-     *
-     * @tparam T The type of the underlying entity.
-     * @return A new entity type with the specified class info.
-     */
-    def create[T <: AnyRef : ClassTag](classInfo: Class[_]): IO[Entity[T]] = {
-      val tagged = implicitly[ClassTag[T]].runtimeClass
-      if (tagged.isAssignableFrom(classInfo)) IO.pure(new Entity[T](classInfo))
-      else IO.raiseError(new IllegalArgumentException(s"Cannot assign ${classInfo.getName} to ${tagged.getName}"))
-    }
 
   }
 

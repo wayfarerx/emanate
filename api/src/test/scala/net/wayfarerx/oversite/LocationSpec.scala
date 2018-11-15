@@ -40,9 +40,13 @@ class LocationSpec extends FlatSpec with Matchers {
     Location.resolved(Path("a")).names shouldBe Vector(name"a")
     Location.empty :+ name"b" shouldBe Location.resolved(Path("b"))
     Location.resolved(Path("a")) :+ name"b" shouldBe Location.resolved(Path("a/b"))
+    Location.empty :++ Path("b/c") shouldBe Some(Location.resolved(Path("b/c")))
+    Location.resolved(Path("a")) :++ Path("b/c") shouldBe Some(Location.resolved(Path("a/b/c")))
+    Location.empty :++ Path("..") shouldBe None
+    Location.resolved(Path("a")) :++ Path("../..") shouldBe None
   }
 
-  it should "calculate common prefixes and distances between locations" in {
+  it should "calculate common prefixes as well as distances and paths between locations" in {
     val root = Location.empty
     val a = Location.resolved(Path("/a"))
     val b = Location.resolved(Path("/a/b"))
@@ -63,6 +67,15 @@ class LocationSpec extends FlatSpec with Matchers {
     a.distanceTo(b) shouldBe 1
     a.distanceTo(c) shouldBe 2
     a.distanceTo(d) shouldBe 2
+    root.pathTo(root) shouldBe Path.empty
+    root.pathTo(a) shouldBe Path("a")
+    root.pathTo(c) shouldBe Path("a/b/c")
+    a.pathTo(b) shouldBe Path("b")
+    a.pathTo(d) shouldBe Path("b/d")
+    b.pathTo(a) shouldBe Path("..")
+    b.pathTo(b) shouldBe Path.empty
+    c.pathTo(root) shouldBe Path("../../..")
+    d.pathTo(c) shouldBe Path("../c")
   }
 
   it should "act as a Product1" in {

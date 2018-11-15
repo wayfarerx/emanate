@@ -137,4 +137,25 @@ class PointerSpec extends FlatSpec with Matchers {
     Pointer.parse("mailto:x@wayfarerx.net") shouldBe External(Page, "mailto:x@wayfarerx.net")
   }
 
+  it should "optimize and swap prefixes" in {
+    val a = Location.resolved(Path("a"))
+    val b = Location.resolved(Path("a/b"))
+    val c = Location.resolved(Path("a/b/c"))
+    Pointer.Prefix(a, a) shouldBe Pointer.Prefix.Relative(Path.empty)
+    Pointer.Prefix(a, b) shouldBe Pointer.Prefix.Relative(Path("b"))
+    Pointer.Prefix(a, c) shouldBe Pointer.Prefix.Relative(Path("b/c"))
+    Pointer.Prefix(b, a) shouldBe Pointer.Prefix.Relative(Path(".."))
+    Pointer.Prefix(b, b) shouldBe Pointer.Prefix.Relative(Path.empty)
+    Pointer.Prefix(b, c) shouldBe Pointer.Prefix.Relative(Path("c"))
+    Pointer.Prefix(c, a) shouldBe Pointer.Prefix.Absolute(Location.resolved(Path("a")))
+    Pointer.Prefix(c, b) shouldBe Pointer.Prefix.Relative(Path(".."))
+    Pointer.Prefix(c, c) shouldBe Pointer.Prefix.Relative(Path.empty)
+    val p = Pointer.Search(Pointer.Image, Pointer.Prefix.Relative(b.path), name"search")
+    val q = Pointer.Target(Pointer.Image, Pointer.Prefix.Absolute(c), "search.png")
+    p.withPrefix(Pointer.Prefix.Absolute(a)) shouldBe
+      Pointer.Search(Pointer.Image, Pointer.Prefix.Absolute(a), name"search")
+    q.withPrefix(Pointer.Prefix.Absolute(a)) shouldBe
+      Pointer.Target(Pointer.Image, Pointer.Prefix.Absolute(a), "search.png")
+  }
+
 }

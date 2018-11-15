@@ -32,15 +32,6 @@ final class Name private(val normal: String, val display: String) extends Produc
   /* Return the display form. */
   override def _2: String = display
 
-  /**
-   * Concatenates this name with the specified name.
-   *
-   * @param that The name to append to this name.
-   * @return This name concatenated with the specified name.
-   */
-  def ++ (that: Name): Name =
-    new Name(s"$normal-${that.normal}", that.display)
-
   /* Ignore the display name in equality checks. */
   override def canEqual(that: Any): Boolean = that match {
     case Name(_, _) => true

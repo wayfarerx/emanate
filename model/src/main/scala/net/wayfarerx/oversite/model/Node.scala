@@ -50,7 +50,7 @@ sealed trait Node[T <: AnyRef] extends Context {
   private val _entity = Cached.Soft(document flatMap scope.decoder.decode)
 
   /** The cache ot alternate text for images. */
-  private lazy val _altText = new AltText(resources)
+  private lazy val _altText = new AltText(location, resources)
 
   //
   // The API for all nodes.

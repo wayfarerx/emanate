@@ -29,7 +29,7 @@ import cats.effect.IO
 /**
  * A cache for the alternate text associated with images.
  *
- * @param location The location to search from.
+ * @param location  The location to search from.
  * @param resources The resource collection to load from.
  * @param resource  The name of the resource to load.
  */
@@ -52,20 +52,23 @@ final class AltText(location: Location, resources: Resources, resource: String =
       val map = cache.get()
       map get path match {
         case Some(cached) =>
-          cached() map (alt => {
+          cached() map { alt => {
             file lastIndexOf '.' match {
               case i if i >= 0 => Name(file.substring(0, i))
               case _ => Name(file)
             }
-          } flatMap alt.get)
+          } flatMap alt.get
+          }
         case None =>
           cache.compareAndSet(map, map + (path -> Cached.Soft {
             resources.find(location.toString + path + resource) flatMap {
               case Some(url) => IO(url.openStream()).bracket { stream =>
                 val properties = new Properties
-                IO(properties.load(stream)) map (_ => properties.asScala.flatMap {
-                  case (k, v) => Name(k) map (_ -> v)
-                }.toMap)
+                IO(properties.load(stream)) map { _ =>
+                  properties.asScala.flatMap {
+                    case (k, v) => Name(k) map (_ -> v)
+                  }.toMap
+                }
               }(stream => IO(stream.close()))
               case None =>
                 IO.pure(Map.empty)

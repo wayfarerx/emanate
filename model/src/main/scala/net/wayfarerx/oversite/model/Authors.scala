@@ -55,11 +55,11 @@ case class Authors private(authors: Map[Name, Author]) {
  */
 object Authors {
 
-  def apply(resources: Resources, resource: String): IO[Authors] =
+  def apply(resources: Resources, resource: String = "authors.txt"): IO[Authors] =
     for {
-      url <- resources.find(resource)
-      lines <- url map { data =>
-        IO(Source.fromInputStream(data.openStream())).bracket(s => IO(s.getLines().toVector))(s => IO(s.close()))
+      found <- resources.find(resource)
+      lines <- found map { url =>
+        IO(Source.fromInputStream(url.openStream())).bracket(s => IO(s.getLines().toVector))(s => IO(s.close()))
       } getOrElse IO.pure(Vector.empty)
     } yield
       Authors(lines.map(_.split("""[\s]+""").toVector.filterNot(_.isEmpty)).flatMap {

@@ -445,7 +445,7 @@ object Node {
   case class Root[T <: AnyRef](site: Site[T], resource: URL, resources: Resources) extends Parent[T] {
 
     /** The authors loaded for all nodes. */
-    private val _authors = Cached(Authors(resources, "authors.txt"))
+    private val _authors = Cached(Authors(resources))
 
     /** The index loaded for all nodes. */
     private val _index = Cached(Index(this))

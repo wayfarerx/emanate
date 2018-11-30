@@ -68,80 +68,68 @@ object Parser {
    */
   private def readDocument(markdown: ast.Document): IO[Document] =
     markdown.content.content match {
-      case ast.Header(1, header, _) +: ast.Paragraph(description, _) +: remaining =>
+      case ast.Title(header, _) +: ast.Paragraph(description, _) +: remaining =>
         for {
           i <- readInlines(description)
-          sr <- readSection(1, header, remaining)
-          n <- Name(sr._1.header.map(_.strip).mkString) match {
+          s <- readSection(header, remaining)
+          n <- Name(s.header.map(_.strip).mkString) match {
             case Some(name) => IO.pure(name)
-            case None => Problem.raise(s"Invalid document name: ${sr._1.header}")
-          }
-          _ <- sr._2 match {
-            case Seq() => IO.pure(())
-            case _ => Problem.raise(s"Invalid section structure: $markdown")
+            case None => Problem.raise(s"Invalid document title: ${s.header}")
           }
         } yield {
           val (a, d) = i match {
             case dd :+ Markup.Text(t) =>
               t lastIndexOf '@' match {
                 case index if index >= 0 =>
-                  (Some(t drop index + 1): Option[String]) -> (dd :+ Markup.Text(t take index))
+                  (Some(t drop index + 1): Option[String]) ->
+                    (dd :+ Markup.Text(t.take(index).replaceAll("\\s+$", "")))
                 case _ =>
-                  (None: Option[String]) -> (dd :+ Markup.Text(t))
+                  (None: Option[String]) -> i
               }
-            case dd =>
-              (None: Option[String]) -> dd
+            case _ =>
+              (None: Option[String]) -> i
           }
-          Document(Metadata(n, a flatMap (Name(_)) map (Author(_)), d), sr._1.content, sr._1.sections)
+          Document(Metadata(n, a flatMap (Name(_)) map (Author(_)), d), s.content, s.sections)
         }
       case invalid =>
-        Problem.raise(s"Invalid document markup: $invalid.")
+        Problem.raise(s"Document missing a description: $invalid.")
     }
 
   /**
    * Attempts to read the content of a single section.
    *
-   * @param level  The level of the section.
    * @param header The header of the section.
    * @param next   The elements to extract the section's content from.
    * @return The result of attempting to read the content of a single section and any remaining blocks.
    */
   private def readSection(
-    level: Int,
     header: Seq[ast.Span],
     next: Seq[ast.Block]
-  ): IO[(Document.Section, Seq[ast.Block])] = {
-    val nested = next takeWhile {
-      case ast.Header(l, _, _) if l > level => true
-      case ast.Header(_, _, _) => false
-      case _ => true
-    }
-    val content = nested.takeWhile {
-      case ast.Header(_, _, _) => false
+  ): IO[Document.Section] = {
+    val content = next takeWhile {
+      case ast.Section(_, _, _) => false
       case _ => true
     }
     for {
       h <- readInlines(header)
       c <- readBlocks(content)
-      s <- readSections(nested drop content.size)
-    } yield Document.Section(h, c, s) -> next.drop(nested.size)
+      s <- readSections(next drop content.size collect { case section@ast.Section(_, _, _) => section })
+    } yield Document.Section(h, c, s)
   }
 
   /**
    * Attempts to read all available sections from the specified blocks.
    *
-   * @param blocks The blocks to read sections from.
+   * @param sections The blocks to read sections from.
    * @return The result of the attempt to read all available sections from the specified blocks.
    */
-  private def readSections(blocks: Seq[ast.Block]): IO[Vector[Document.Section]] =
-    blocks match {
-      case ast.Header(level, header, _) +: next =>
-        for {
-          sr <- readSection(level, header, next)
-          ss <- readSections(sr._2)
-        } yield sr._1 +: ss
-      case Seq() =>
-        IO.pure(Vector.empty)
+  private def readSections(sections: Seq[ast.Section]): IO[Vector[Document.Section]] =
+    sections match {
+      case ast.Section(header, content, _) +: tail => for {
+        s <- readSection(header.content, content)
+        ss <- readSections(tail)
+      } yield s +: ss
+      case _ => IO.pure(Vector.empty)
     }
 
   /**
@@ -153,8 +141,8 @@ object Parser {
   private def readBlock(block: ast.Block): IO[Markup.Block] = block match {
     case ast.Paragraph(content, _) =>
       readInlines(content) map Markup.Paragraph
-    case ast.CodeBlock(_, content, _) =>
-      readInlines(content) map Markup.CodeBlock
+    case ast.LiteralBlock(content, _) =>
+      IO.pure(Markup.CodeBlock(Vector(Markup.Text(content))))
     case ast.QuotedBlock(content, _, _) =>
       readBlocks(content) map Markup.BlockQuote
     case ast.Rule(_) =>
@@ -193,8 +181,6 @@ object Parser {
   private def readInline(span: ast.Span): IO[Markup.Inline] = span match {
     case ast.Text(content, _) =>
       IO.pure(Markup.Text(content))
-    case ast.Code(_, content, _) =>
-      readInlines(content) map Markup.Code
     case ast.Literal(content, _) =>
       IO.pure(Markup.Code(Vector(Markup.Text(content))))
     case ast.Emphasized(content, _) =>

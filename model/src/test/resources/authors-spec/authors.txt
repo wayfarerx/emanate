@@ -1,0 +1,5 @@
+foo1
+foo2 @bar
+foo3  bar@example.com
+ foo4 @bar baz@example.com
+foo5 @foo5 foo@5.com extra

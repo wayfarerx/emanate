@@ -1,5 +1,5 @@
 /*
- * Author.scala
+ * CachedSpec.scala
  *
  * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
@@ -17,26 +17,26 @@
  */
 
 package net.wayfarerx.oversite
+package model
+
+import cats.effect.IO
+import org.scalatest.{FlatSpec, Matchers}
 
 /**
- * An author that provides content to the site.
- *
- * @param name    The name of this author.
- * @param twitter The optional Twitter handle of this author.
+ * Test suite for the cached reference implementation.
  */
-case class Author(
-  name: Name,
-  twitter: Option[String] = None,
-  email: Option[String] = None
-) {
+class CachedSpec extends FlatSpec with Matchers {
 
-  /** The ID of this author. */
-  def id: String = name.normal
+  "Cached" should "lazy load a reference as an effect" in {
+    val cached = Cached(IO.pure("str"))
+    cached().unsafeRunSync() shouldBe "str"
+    cached().unsafeRunSync() shouldBe "str"
+  }
 
-  /** The external reference if one exists. */
-  def link: Option[Pointer.External[Pointer.Page]] =
-    twitter.map(t => s"https://twitter.com/$t")
-      .orElse(email.map(e => s"mailto:$e"))
-      .map(Pointer.External(Pointer.Page, _))
+  "Cached.Soft" should "lazy load a soft reference as an effect" in {
+    val cached = Cached.Soft(IO.pure("str"))
+    cached().unsafeRunSync() shouldBe "str"
+    cached().unsafeRunSync() shouldBe "str"
+  }
 
 }

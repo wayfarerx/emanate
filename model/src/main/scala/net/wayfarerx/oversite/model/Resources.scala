@@ -56,6 +56,14 @@ trait Resources {
    */
   def list(directory: Path.Regular): IO[Vector[String]]
 
+  /**
+   * Attempts to load a class from this collection of resources.
+   *
+   * @param className The name of the class to load.
+   * @return  The result of attempting to load a class from this collection of resources.
+   */
+  def load(className: String): IO[Class[_]]
+
 }
 
 /**
@@ -82,6 +90,10 @@ object Resources {
     /* Attempt to list the resources contained in a directory. */
     override def list(directory: Path.Regular): IO[Vector[String]] =
       Query(directory) map source.list getOrElse IO.pure(Vector.empty)
+
+    /* Attempt to load the specified class. */
+    override def load(className: String): IO[Class[_]] =
+      IO(classLoader.loadClass(className))
 
   }
 

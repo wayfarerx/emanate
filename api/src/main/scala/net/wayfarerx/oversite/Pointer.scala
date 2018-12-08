@@ -430,7 +430,7 @@ object Pointer {
    *
    * @param classInfo The information about the entity class.
    */
-  case class Entity[T <: AnyRef] private(classInfo: Class[_]) extends Type {
+  case class Entity[T <: AnyRef] (classInfo: Class[_]) extends Type {
 
     /* Define the file name type. */
     override type SuffixType = Unit

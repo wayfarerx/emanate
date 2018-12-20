@@ -30,5 +30,5 @@ case class Metadata(
   name: Name,
   author: Option[Author] = None,
   description: Vector[Markup.Inline] = Vector.empty,
-  image: Option[Pointer.Internal[Pointer.Image]] = Some(Pointer.Image(Pointer.Image.default))
+  image: Option[Pointer.Internal[Pointer.Image]] = Some(Pointer.Image(Pointer.Image.name))
 )

@@ -19,6 +19,8 @@
 package net.wayfarerx.oversite
 package model
 
+import language.existentials
+
 import cats.effect.IO
 
 /**

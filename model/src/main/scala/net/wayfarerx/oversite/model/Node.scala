@@ -21,6 +21,8 @@ package model
 
 import java.net.URL
 
+import language.existentials
+
 import io.{Codec, Source}
 import cats.effect.IO
 
@@ -90,48 +92,32 @@ sealed trait Node[T <: AnyRef] extends Context {
    * @param file The file to check for generation in the path.
    * @return True if this node generates the specified file.
    */
-  final def generates(path: Path, file: String): Boolean =
-    scope.stylesheets exists {
-      case Scope.Styles.Generated(n, _) => path match {
-        case Path(Vector(Path.Child(p))) if p == Pointer.Stylesheet.prefix =>
-          file == s"$n.${Pointer.Stylesheet.extension}"
-        case _ => false
+  final def generates(path: Path, file: String): Boolean = {
+    for {
+      p <- path match {
+        case Path(Vector(Path.Child(pp))) => Some(Some(pp))
+        case Path.empty => Some(None)
+        case _ => None
       }
-      case _ => false
-    }
-
-  /**
-   * Returns true if this node generates the specified file.
-   *
-   * @param asset The asset type to check for generation.
-   * @param name  The name to check for generation.
-   * @return True if this node generates the specified file.
-   */
-  final def generates(asset: Pointer.Asset, name: Name): Boolean =
-    asset == Pointer.Stylesheet && scope.stylesheets.exists {
-      case Scope.Styles.Generated(n, _) => n == name
-      case _ => false
-    }
+      (n, e) <- file lastIndexOf '.' match {
+        case index if index >= 0 =>
+          Name(file.substring(0, index)) flatMap (nn => Name(file.substring(index + 1)) map (nn -> _))
+        case _ => None
+      }
+      v <- Pointer.VariantsByExtension get e
+    } yield v.asset.prefix == p && scope.generators.exists { case Scope.Generator(nn, vv, _) => n == nn && v == vv }
+  } getOrElse false
 
   //
   // The context implementations for all nodes.
   //
 
-  /* Convert the stylesheets into stylesheet references. */
-  override def stylesheets: Vector[Scope.Styles.Reference] =
-    scope.stylesheets map {
-      case Scope.Styles.Generated(name, _) => Scope.Styles.Internal(Pointer.Stylesheet(name))
-      case reference: Scope.Styles.Reference => reference
-    }
-
   /* Resolve all pointers. */
-  final override def resolve[P <: Pointer.Type](pointer: Pointer[P]): IO[Pointer.Resolved[P]] = {
-    println(s"Resolve generic $pointer")
+  final override def resolve[P <: Pointer.Type](pointer: Pointer[P]): IO[Pointer.Resolved[P]] =
     pointer match {
       case p: Pointer.Internal[P] => resolveInternal(p)
       case p: Pointer.Resolved[P] => IO.pure(p)
     }
-  }
 
   /* Resolve internal pointers. */
   final override def resolve[P <: Pointer.Type.Aux[S], S](pointer: Pointer.Internal[P]): IO[Pointer.Target[P, S]] =
@@ -165,11 +151,13 @@ sealed trait Node[T <: AnyRef] extends Context {
     IO.pure(pointer)
 
   /* Load the specified entity. */
-  final override def load[E <: AnyRef](pointer: Pointer.Internal[Pointer.Entity[E]]): IO[E] = pointer match {
+  final override def load[E <: AnyRef](pointer: Pointer[Pointer.Entity[E]]): IO[E] = pointer match {
     case Pointer.Search(_, from, query) =>
       searchForEntity(pointer.tpe, from, query) flatMap (_.entity map (_.asInstanceOf[E]))
     case Pointer.Target(_, at, _) =>
       targetEntity(pointer.tpe, at) flatMap (_.entity map (_.asInstanceOf[E]))
+    case _ =>
+      sys.error("unreachable")
   }
 
   /* Attempt to load the alt text for an image. */
@@ -263,46 +251,46 @@ sealed trait Node[T <: AnyRef] extends Context {
     asset: Pointer.Asset,
     from: Pointer.Prefix,
     query: Name
-  ): IO[(Node[_ <: AnyRef], Path, String)] =
-    canonicalAsset(from, "") flatMap { case (start, path, _) =>
+  ): IO[(Node[_ <: AnyRef], Path, String)] = {
+    canonicalAsset(from, Path.Regular(asset.prefix map (p => s"$p/$query") getOrElse query.normal))
+      .flatMap { case (start, path, _) =>
 
-      /* Find from the specified extensions. */
-      def finding(node: Node[_ <: AnyRef], remaining: Vector[String]): IO[Option[String]] = remaining match {
-        case head +: tail =>
-          val file = s"$query.$head"
-          if (node.generates(path, file)) IO.pure(Some(file))
-          else resources find node.location.toString + path + file flatMap {
-            _ map (_ => IO.pure(Some(file))) getOrElse finding(node, tail)
-          }
-        case _ => IO.pure(None)
-      }
-
-      /* Search the specified node and all of its parents. */
-      def searching(node: Node[_ <: AnyRef]): IO[Option[(Node[_ <: AnyRef], Path, String)]] =
-        finding(node, asset.extensions.toVector) flatMap {
-          case Some(file) =>
-            IO.pure(Some((node, path, file)))
-          case None =>
-            if (path.elements.isEmpty && node.generates(asset, query)) {
-              IO.pure(Some((node, Path(asset.prefix), s"$query.${asset.extensions.head}")))
-            } else node match {
-              case child: Node.Child[_] => searching(child.parent)
-              case _ => IO.pure(None)
+        /* Find from the specified extensions. */
+        def finding(node: Node[_ <: AnyRef], remaining: Vector[Name]): IO[Option[String]] = remaining match {
+          case head +: tail =>
+            val file = s"$query.$head"
+            if (node.generates(path, file)) IO.pure(Some(file))
+            else resources find node.location.toString + path + file flatMap {
+              _ map (_ => IO.pure(Some(file))) getOrElse finding(node, tail)
             }
+          case _ => IO.pure(None)
         }
 
-      searching(start) flatMap {
-        case Some(result) => IO.pure(result)
-        case None => Problem.raise(s"Cannot find ${asset.default} asset $from?$path")
+        /* Search the specified node and all of its parents. */
+        def searching(node: Node[_ <: AnyRef]): IO[Option[(Node[_ <: AnyRef], Path, String)]] =
+          finding(node, asset.variants.flatMap(_.extensions).toVector) flatMap {
+            case Some(file) =>
+              IO.pure(Some((node, path, file)))
+            case None =>
+              node match {
+                case child: Node.Child[_] => searching(child.parent)
+                case _ => IO.pure(None)
+              }
+          }
+
+        searching(start) flatMap {
+          case Some(result) => IO.pure(result)
+          case None => Problem.raise(s"Cannot find ${asset.name} asset $from?$query")
+        }
       }
-    }
+  }
 
   /**
-   * Converts an asset target into a canonical node and resource path.
+   * Converts an asset target into a canonical node, path and file.
    *
    * @param prefix The prefix of the asset.
    * @param suffix The suffix of the asset.
-   * @return The contextualized node and resource path for the targeted asset.
+   * @return The contextualized node, path and file for the targeted asset.
    */
   private def canonicalAsset(prefix: Pointer.Prefix, suffix: Path.Regular): IO[(Node[_ <: AnyRef], Path, String)] = {
 
@@ -337,7 +325,7 @@ sealed trait Node[T <: AnyRef] extends Context {
     case Pointer.Prefix.Absolute(l) => Some(l)
   }
 
-  }
+}
 
 /**
  * Definitions of the node tree.
@@ -392,16 +380,6 @@ object Node {
 
     /* The parent's location extended with this child's name. */
     final override lazy val location: Location = parent.location :+ name
-
-    /* Return the parent's stylesheets, mapped to the child's location, and the child's stylesheets. */
-    final override lazy val stylesheets: Vector[Scope.Styles.Reference] =
-      parent.stylesheets.map {
-        case Scope.Styles.Internal(p) => Scope.Styles.Internal(p.scope match {
-          case Pointer.Prefix.Relative(path) => p.withPrefix(Pointer.Prefix.Relative(Path.Parent +: path))
-          case _ => p
-        })
-        case other => other
-      } ++ super.stylesheets
 
     /** The parent of this child node. */
     def parent: Parent[_ <: AnyRef]
@@ -505,8 +483,7 @@ object Node {
    * @param name   The name of this branch.
    * @param scope  The scope of this branch.
    */
-  case class Leaf[T <: AnyRef](parent: Parent[_ <: AnyRef], name: Name, scope: Scope[T], resource: URL)
-    extends Child[T]
+  case class Leaf[T <: AnyRef](parent: Parent[_ <: AnyRef], name: Name, scope: Scope[T], resource: URL) extends Child[T]
 
   /**
    * The type of exception produced when parsing problems are encountered.

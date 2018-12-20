@@ -33,7 +33,7 @@ import cats.effect.IO
  * @param resources The resource collection to load from.
  * @param resource  The name of the resource to load.
  */
-final class AltText(location: Location, resources: Resources, resource: String = "alt.txt") {
+final class AltText(location: Location, resources: Resources, resource: String = "alt.properties") {
 
   /** The cache of alt-text bundles. */
   private val cache = new AtomicReference(Map.empty: Map[Path, Cached.Soft[Map[Name, String]]])

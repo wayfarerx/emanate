@@ -75,12 +75,12 @@ class PointerSpec extends FlatSpec with Matchers {
   }
 
   it should "handle asset pointers correctly" in {
-    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.extensions map (a -> _)) foreach {
+    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.variants.toSeq map (a -> _)) foreach {
       case (asset, extension) =>
         val name = name"name"
         val relative = Prefix.Relative(Path("relative"))
         val absolute = Prefix.Absolute(Location.resolved(Path("absolute")))
-        val suffix = asset.default + "." + extension
+        val suffix = asset.name + "." + extension
         // Verify asset pointer construction.
         asset(name) shouldBe Search[Asset](asset, Prefix.empty, name)
         asset(relative.path, name) shouldBe Search[Asset](asset, relative, name)
@@ -119,18 +119,20 @@ class PointerSpec extends FlatSpec with Matchers {
     Pointer.parse("/name/") shouldBe Target(Entity[AnyRef], Prefix.Absolute(Location.resolved(Path(name))), ())
     Pointer.parse("at/name/") shouldBe Target(Entity[AnyRef], Prefix.Relative(path :+ name), ())
     Pointer.parse("/at/name/") shouldBe Target(Entity[AnyRef], Prefix.Absolute(location :+ name), ())
-    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.extensions map (a -> _)) foreach {
-      case (asset, extension) =>
-        Pointer.parse(s"${asset.prefix}/") shouldBe Search(asset, Prefix.empty, asset.default)
-        Pointer.parse(s"/${asset.prefix}/") shouldBe Search(asset, Prefix.root, asset.default)
-        Pointer.parse(s"${asset.prefix}/${asset.default}") shouldBe Search(asset, Prefix.empty, asset.default)
-        Pointer.parse(s"/${asset.prefix}/${asset.default}") shouldBe Search(asset, Prefix.root, asset.default)
-        val suffix = asset.default + "." + extension
-        Pointer.parse(suffix) shouldBe Target(asset, Prefix.empty, suffix)
-        Pointer.parse(s"/$suffix") shouldBe Target(asset, Prefix.root, suffix)
-        Pointer.parse(s"at/$suffix") shouldBe Target(asset, Prefix.Relative(path), suffix)
-        Pointer.parse(s"/at/$suffix") shouldBe Target(asset, Prefix.Absolute(location), suffix)
-        Pointer.parse(s"//example.com/$suffix") shouldBe External(asset, s"//example.com/$suffix")
+    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.variants.toSeq map (a -> _)) foreach {
+      case (asset, variant) =>
+        asset.prefix foreach { p =>
+          Pointer.parse(s"$p/") shouldBe Search(asset, Prefix.empty, asset.name)
+          Pointer.parse(s"/$p/") shouldBe Search(asset, Prefix.root, asset.name)
+        }
+        variant.extensions foreach { extension =>
+          val suffix = asset.name + "." + extension
+          Pointer.parse(suffix) shouldBe Target(asset, Prefix.empty, suffix)
+          Pointer.parse(s"/$suffix") shouldBe Target(asset, Prefix.root, suffix)
+          Pointer.parse(s"at/$suffix") shouldBe Target(asset, Prefix.Relative(path), suffix)
+          Pointer.parse(s"/at/$suffix") shouldBe Target(asset, Prefix.Absolute(location), suffix)
+          Pointer.parse(s"//example.com/$suffix") shouldBe External(asset, s"//example.com/$suffix")
+        }
     }
     Pointer.parse("//example.com") shouldBe External(Page, "//example.com")
     Pointer.parse("https://example.com/") shouldBe External(Page, "https://example.com/")

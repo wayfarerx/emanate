@@ -51,13 +51,17 @@ object Pointer {
   type Script = Script.type
 
   /** The supported assets. */
-  val Assets: Vector[Asset] = Vector(Page, Image, Stylesheet, Script)
+  val Assets: Vector[Asset] =
+    Vector(Page, Image, Stylesheet, Script)
 
   /** The index of assets by prefix. */
-  private val assetsByPrefix = Assets.map(a => a.prefix -> a).toMap
+  lazy val AssetsByPrefix: Map[Name, Asset] =
+    Assets.flatMap(a => a.prefix.map(_ -> a)).toMap
 
-  /** The index of assets by extension. */
-  private val assetsByExtension = Assets.flatMap(a => a.extensions map (_ -> a)).toMap
+  /** The index of asset variants by extension. */
+  lazy val VariantsByExtension: Map[Name, Asset#Variant] = {
+    Assets.flatMap(a => a.variants.toVector flatMap (v => v.extensions map (_ -> v))).toMap
+  }
 
   /**
    * Parses a pointer.
@@ -94,7 +98,7 @@ object Pointer {
     def narrow[U <: T : ClassTag]: Pointer[Entity[U]] = self match {
       case Search(_, p, q) => Search(Entity[U], p, q)
       case Target(_, p, _) => Target(Entity[U], p, ())
-      case _ => sys.error("unreachable code")
+      case _ => sys.error("unreachable")
     }
 
   }
@@ -133,12 +137,11 @@ object Pointer {
     private[Pointer] def parse(string: Path.Regular): Internal[Type] = {
       val (prefix, extra) = Prefix.parse(string)
       extra collect {
-        case suffix if suffix contains '.' => Target(Asset.detect(suffix) getOrElse Page, prefix, suffix)
-      } orElse {
-        prefix.typed map { case (p, a) =>
-          Search(a, p, extra flatMap (Name(_)) getOrElse a.default)
-        } orElse extra.flatMap(Name(_)).map(Search(Entity[AnyRef], prefix, _))
-      } getOrElse Target(Entity[AnyRef], prefix, ())
+        case suffix if suffix contains '.' => Target(Asset.detect(suffix) map (_.asset) getOrElse Page, prefix, suffix)
+      } orElse prefix.typed.map { case (p, a) =>
+        Search(a, p, extra flatMap (Name(_)) getOrElse a.name)
+      }.orElse(extra.flatMap(Name(_)).map(Search(Entity[AnyRef], prefix, _))) getOrElse
+        Target(Entity[AnyRef], prefix, ())
     }
 
     /**
@@ -289,7 +292,7 @@ object Pointer {
      * @return The parsed external pointer.
      */
     private[Pointer] def parse(string: String): External[Asset] =
-      External(Asset detect string getOrElse Page, string)
+      External(Asset detect string map (_.asset) getOrElse Page, string)
 
   }
 
@@ -302,7 +305,7 @@ object Pointer {
     type PrefixType >: this.type <: Prefix
 
     /**
-     * Drops the last name in this prefix if it matches any known asset name.
+     * Drops the last name in this prefix if it matches any known asset prefix.
      *
      * @return A new prefix if the name was dropped from the end as well as the matching asset.
      */
@@ -360,7 +363,7 @@ object Pointer {
       /* Drop the last name if it matches an asset prefix. */
       override def typed: Option[(PrefixType, Asset)] =
         path.elements match {
-          case init :+ Path.Child(n) => assetsByPrefix.get(n) map (Relative(Path(init)) -> _)
+          case init :+ Path.Child(n) => AssetsByPrefix.get(n) map (Relative(Path(init)) -> _)
           case _ => None
         }
 
@@ -382,7 +385,7 @@ object Pointer {
       /* Drop the last name if it matches an asset prefix. */
       override def typed: Option[(PrefixType, Asset)] =
         location.path.elements match {
-          case init :+ Path.Child(n) => assetsByPrefix.get(n) map (Absolute(Location.resolved(Path(init))) -> _)
+          case init :+ Path.Child(n) => AssetsByPrefix.get(n) map (Absolute(Location.resolved(Path(init))) -> _)
           case _ => None
         }
 
@@ -430,7 +433,7 @@ object Pointer {
    *
    * @param classInfo The information about the entity class.
    */
-  case class Entity[T <: AnyRef] (classInfo: Class[_]) extends Type {
+  case class Entity[T <: AnyRef](classInfo: Class[_]) extends Type {
 
     /* Define the file name type. */
     override type SuffixType = Unit
@@ -541,6 +544,7 @@ object Pointer {
    * The base type for asset pointers.
    */
   sealed trait Asset extends Type {
+    self =>
 
     /** The type of this asset. */
     type AssetType >: this.type <: Asset
@@ -552,13 +556,16 @@ object Pointer {
     final override type SuffixType = String
 
     /** The prefix that is prepended to the asset name when searching. */
-    def prefix: Name
+    def prefix: Option[Name]
 
     /** The default name of this type of asset. */
-    def default: Name
+    def name: Name
 
-    /** The extensions that are appended to the asset name when searching. */
-    def extensions: ListSet[String]
+    /** The supported variants of this asset type. */
+    def variants: ListSet[Variant]
+
+    /** Returns the default extension for this variant. */
+    final def extensions: ListSet[Name] = variants flatMap (_.extensions)
 
     /**
      * Creates a pointer that searches the current location for an asset.
@@ -650,12 +657,42 @@ object Pointer {
         suffix flatMap {
           case s if s contains '.' => Some(Target[AssetType, SuffixType](this, prefix, s))
           case s => Name(s) map (Search[AssetType](this, prefix, _))
-        } getOrElse Search[AssetType](this, prefix, default)
+        } getOrElse Search[AssetType](this, prefix, name)
       }
 
     /* Concatenate the prefix and suffix for asset hypertext references. */
     final override def href(prefix: Prefix, suffix: SuffixType): String =
       prefix + suffix
+
+    /**
+     * A particular variant of the enclosing asset type.
+     *
+     * @param extensions The extensions for this variant.
+     */
+    case class Variant private(extensions: ListSet[Name]) {
+
+      /** Returns the asset this variant is bound to. */
+      def asset: Asset = self
+
+      /** Returns the default extension for this variant. */
+      def extension: Name = extensions.head
+
+    }
+
+    /**
+     * Factory for asset variants.
+     */
+    object Variant {
+
+      /**
+       * Creates a new variant of the enclosing asset type.
+       *
+       * @param extensions The extensions for this variant.
+       * @return A new variant of the enclosing asset type.
+       */
+      def apply(extensions: String*): Variant = Variant(ListSet(extensions flatMap (e => Name(e.toLowerCase)): _*))
+
+    }
 
   }
 
@@ -670,9 +707,15 @@ object Pointer {
      * @param string The string to detect the asset type from.
      * @return The detected asset type.
      */
-    final private[Pointer] def detect(string: String): Option[Asset] = {
-      val substring = string substring string.lastIndexOf('/') + 1
-      assetsByExtension get substring.substring(substring.lastIndexOf('.') + 1)
+    final private[Pointer] def detect(string: String): Option[Asset#Variant] = {
+      val file = string lastIndexOf '/' match {
+        case i if i >= 0 => string substring i + 1
+        case _ => string
+      }
+      Name(file lastIndexOf "." match {
+        case i if i >= 0 => file substring i + 1
+        case _ => file
+      }) flatMap VariantsByExtension.get
     }
 
   }
@@ -682,20 +725,20 @@ object Pointer {
    */
   case object Page extends Asset {
 
+    /** HTML pages. */
+    val html: Variant = Variant("html")
+
     /* Define the asset type. */
     override type AssetType = Page
 
     /* The search prefix. */
-    override val prefix: Name = name"pages"
+    override val prefix: Option[Name] = None
 
     /* The default name. */
-    override val default: Name = name"page"
-
-    /** The singular extension to search for. */
-    val extension: String = "html"
+    override val name: Name = name"page"
 
     /* The extensions to search for. */
-    override val extensions: ListSet[String] = ListSet(extension)
+    override val variants: ListSet[Variant] = ListSet(html)
 
   }
 
@@ -704,17 +747,26 @@ object Pointer {
    */
   case object Image extends Asset {
 
+    /** GIF images. */
+    val gif: Variant = Variant("gif")
+
+    /** JPG images. */
+    val jpg: Variant = Variant("jpg", "jpeg")
+
+    /** PNG images. */
+    val png: Variant = Variant("png")
+
     /* Define the asset type. */
     override type AssetType = Image
 
     /* The search prefix. */
-    override val prefix: Name = name"images"
+    override val prefix: Option[Name] = Some(name"images")
 
     /* The default name. */
-    override val default: Name = name"image"
+    override val name: Name = name"image"
 
     /* The extensions to search for. */
-    override val extensions: ListSet[String] = ListSet("jpg", "jpeg", "gif", "png")
+    override val variants: ListSet[Variant] = ListSet(gif, jpg, png)
 
   }
 
@@ -723,20 +775,20 @@ object Pointer {
    */
   case object Stylesheet extends Asset {
 
+    /** CSS stylesheets. */
+    val css: Variant = Variant("css")
+
     /* Define the asset type. */
     override type AssetType = Stylesheet
 
     /* The search prefix. */
-    override val prefix: Name = name"stylesheets"
+    override val prefix: Option[Name] = Some(name"stylesheets")
 
     /* The default name. */
-    override val default: Name = name"stylesheet"
-
-    /** The singular extension to search for. */
-    val extension: String = "css"
+    override val name: Name = name"stylesheet"
 
     /* The extensions to search for. */
-    override val extensions: ListSet[String] = ListSet(extension)
+    override val variants: ListSet[Variant] = ListSet(css)
 
   }
 
@@ -745,20 +797,20 @@ object Pointer {
    */
   case object Script extends Asset {
 
+    /** JS scripts. */
+    val js: Variant = Variant("js")
+
     /* Define the asset type. */
     override type AssetType = Script
 
     /* The search prefix. */
-    override val prefix: Name = name"scripts"
+    override val prefix: Option[Name] = Some(name"scripts")
 
     /* The default name. */
-    override val default: Name = name"script"
-
-    /** The singular extension to search for. */
-    val extension: String = "js"
+    override val name: Name = name"script"
 
     /* The extensions to search for. */
-    override val extensions: ListSet[String] = ListSet(extension)
+    override val variants: ListSet[Variant] = ListSet(js)
 
   }
 

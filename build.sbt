@@ -4,7 +4,7 @@ lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
   version := "0.1.34",
-  scalacOptions ++= Seq("-Ypartial-unification"),
+  scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
   libraryDependencies += ScalaTest % Test
 )
 

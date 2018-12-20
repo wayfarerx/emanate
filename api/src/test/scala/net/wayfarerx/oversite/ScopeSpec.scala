@@ -60,14 +60,10 @@ class ScopeSpec extends FlatSpec with Matchers {
     scope3(name3) shouldBe scope2
   }
 
-  it should "provide child stylesheets" in {
-    val generated = Scope.Styles.Generated(name"generated", _ => IO.pure(""))
-    val internal = Scope.Styles.Internal(Pointer.Stylesheet("stylesheet.css"))
-    val external = Scope.Styles.External(Pointer.External(Pointer.Stylesheet, "https://example.com/stylesheet.css"))
-    val scope1 = Scope[String](Vector(generated, internal, external))
-    val scope2 = Scope[String](Vector.empty, scope1)
-    scope1.stylesheets shouldBe Vector(generated, internal, external)
-    scope2.stylesheets shouldBe Vector.empty
+  it should "support asset generators" in {
+    val generated = Scope.Generator(name"generated", Pointer.Stylesheet.css, _ => IO.pure(Array()))
+    val scope = Scope[String](Vector(generated))
+    scope.generators shouldBe Vector(generated)
   }
 
 }

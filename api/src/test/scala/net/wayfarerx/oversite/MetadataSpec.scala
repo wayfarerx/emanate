@@ -26,7 +26,7 @@ import org.scalatest.{FlatSpec, Matchers}
 class MetadataSpec extends FlatSpec with Matchers {
 
   "Metadata" should "accept default arguments" in {
-    Metadata(name"name") shouldBe Metadata(name"name", None, Vector.empty, Some(Pointer.Image(Pointer.Image.default)))
+    Metadata(name"name") shouldBe Metadata(name"name", None, Vector.empty, Some(Pointer.Image(Pointer.Image.name)))
   }
 
 }

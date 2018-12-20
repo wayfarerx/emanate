@@ -158,12 +158,9 @@ object Path {
       val index = string.lastIndexOf('/') + 1
       val path = Path(string.substring(0, index))
       val suffix = string.substring(index)
-      Element parse suffix match {
-        case Some(Parent) => path.parent -> None
-        case Some(Current) => (path :+ Path.Current) -> None
-        case Some(_) => path -> Some(suffix)
-        case None => path -> None
-      }
+      Element parse suffix collect {
+        case append@(Parent | Current) => path :+ append
+      } map (_ -> None) getOrElse path -> (if (suffix.isEmpty) None else Some(suffix))
     }
 
   /**
@@ -236,7 +233,12 @@ object Path {
    *
    * @param string A regular path string.
    */
-  final class Regular private(val string: String) extends AnyVal
+  final class Regular private(val string: String) extends AnyVal {
+
+    /* Return the wrapped string. */
+    override def toString: String = string
+
+  }
 
   /**
    * Factory for regular path strings.

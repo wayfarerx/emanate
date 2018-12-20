@@ -38,7 +38,7 @@ class PathSpec extends FlatSpec with Matchers {
     Path.parse("path/") shouldBe Path("path") -> None
     Path.parse("path/.") shouldBe Path("path/.") -> None
     Path.parse("path/..") shouldBe Path("path/..") -> None
-    Path.parse("path/...") shouldBe Path("path") -> None
+    Path.parse("path/...") shouldBe Path("path") -> Some("...")
     Path.parse("path/./suffix") shouldBe Path("path/.") -> Some("suffix")
     Path.parse("path/../suffix.gif") shouldBe Path("path/..") -> Some("suffix.gif")
   }

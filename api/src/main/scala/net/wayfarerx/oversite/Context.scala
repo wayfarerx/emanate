@@ -31,9 +31,6 @@ trait Context {
   /** Returns the current location in the site. */
   def location: Location
 
-  /** Attempts to return all the stylesheets that are active in this context. */
-  def stylesheets: Vector[Scope.Styles.Reference]
-
   /**
    * Attempts to return the fully resolved form of the specified author.
    *
@@ -77,7 +74,7 @@ trait Context {
    * @param pointer The internal pointer to the entity to load.
    * @return The result of attempting to load the data for the specified entity.
    */
-  def load[T <: AnyRef](pointer: Pointer.Internal[Pointer.Entity[T]]): IO[T]
+  def load[T <: AnyRef](pointer: Pointer[Pointer.Entity[T]]): IO[T]
 
   /**
    * Attempts to load the alt-text for the specific image.

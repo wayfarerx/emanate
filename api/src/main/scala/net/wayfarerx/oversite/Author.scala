@@ -39,4 +39,7 @@ case class Author(
       .orElse(email.map(e => s"mailto:$e"))
       .map(Pointer.External(Pointer.Page, _))
 
+  /* Return the display name. */
+  override def toString: String = name.display
+
 }

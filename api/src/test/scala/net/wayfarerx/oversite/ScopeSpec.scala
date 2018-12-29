@@ -37,33 +37,76 @@ class ScopeSpec extends FlatSpec with Matchers {
     scope.publisher shouldBe publisher
   }
 
-  it should "provide child scopes" in {
+  it should "provide nested scopes" in {
     val name1 = name"name1"
     val name2 = name"name2"
     val name3 = name"name3"
+    val name4 = name"name4"
+    val generator1 = Scope.Generator(name1, Pointer.Stylesheet.css, _ => IO.pure(Array()))
+    val generator2 = Scope.Generator(name2, Pointer.Stylesheet.css, _ => IO.pure(Array()))
     val scope1 = Scope[String]()
-    val scope2 = Scope[String](Scope.Select(name1) -> scope1, Scope.Select() -> scope1)
-    val scope3 = Scope[String](scope2)
-    scope1.search(name1) shouldBe None
-    scope1.search(name2) shouldBe None
-    scope2.search(name1) shouldBe Some(scope1)
-    scope2.search(name2) shouldBe Some(scope1)
-    scope3.search(name1) shouldBe Some(scope2)
-    scope3.search(name2) shouldBe Some(scope2)
-    scope3.search(name3) shouldBe Some(scope2)
+    val scope2 = Scope[String](scope1)
+    val scope3 = Scope[String](indexed = false, Scope.Select() -> scope1)
+    val scope4 = Scope[String](indexed = false, scope1)
+    val scope5 = Scope[String](Vector(generator1), Scope.Select.Matching(name4) -> scope1)
+    val scope6 = Scope[String](Vector(generator2), scope1)
+    val scope7 = Scope[String](indexed = false, Vector(generator1))
+    val scope8 = Scope[String](indexed = false, Vector(generator2), scope1)
+    scope1 shouldBe Scope.Nested(indexed = true, Vector.empty, Vector.empty)
+    scope2 shouldBe Scope.Nested(indexed = true, Vector.empty, Vector(Scope.Select.All -> scope1))
+    scope3 shouldBe Scope.Nested(indexed = false, Vector.empty, Vector(Scope.Select.All -> scope1))
+    scope4 shouldBe Scope.Nested(indexed = false, Vector.empty, Vector(Scope.Select.All -> scope1))
+    scope5 shouldBe Scope.Nested(indexed = true, Vector(generator1), Vector(Scope.Select(name4) -> scope1))
+    scope6 shouldBe Scope.Nested(indexed = true, Vector(generator2), Vector(Scope.Select.All -> scope1))
+    scope7 shouldBe Scope.Nested(indexed = false, Vector(generator1), Vector.empty)
+    scope8 shouldBe Scope.Nested(indexed = false, Vector(generator2), Vector(Scope.Select.All -> scope1))
     scope1(name1) shouldBe scope1
     scope1(name2) shouldBe scope1
     scope2(name1) shouldBe scope1
     scope2(name2) shouldBe scope1
-    scope3(name1) shouldBe scope2
-    scope3(name2) shouldBe scope2
-    scope3(name3) shouldBe scope2
+    scope3(name1) shouldBe scope1
+    scope3(name2) shouldBe scope1
+    scope3(name3) shouldBe scope1
+    scope4(name1) shouldBe scope1
+    scope4(name2) shouldBe scope1
+    scope4(name3) shouldBe scope1
   }
 
-  it should "support asset generators" in {
-    val generated = Scope.Generator(name"generated", Pointer.Stylesheet.css, _ => IO.pure(Array()))
-    val scope = Scope[String](Vector(generated))
-    scope.generators shouldBe Vector(generated)
+  it should "provide aliased scopes" in {
+    val path = Path("path")
+    val name1 = name"name1"
+    val name2 = name"name2"
+    val name3 = name"name3"
+    val name4 = name"name4"
+    val generator1 = Scope.Generator(name1, Pointer.Stylesheet.css, _ => IO.pure(Array()))
+    val generator2 = Scope.Generator(name2, Pointer.Stylesheet.css, _ => IO.pure(Array()))
+    val scope1 = Scope.Aliased[String](path)
+    val scope2 = Scope.Aliased[String](path, scope1)
+    val scope3 = Scope.Aliased[String](path, indexed = false, Scope.Select() -> scope1)
+    val scope4 = Scope.Aliased[String](path, indexed = false, scope1)
+    val scope5 = Scope.Aliased[String](path, Vector(generator1), Scope.Select.Matching(name4) -> scope1)
+    val scope6 = Scope.Aliased[String](path, Vector(generator2), scope1)
+    val scope7 = Scope.Aliased[String](path, indexed = false, Vector(generator1))
+    val scope8 = Scope.Aliased[String](path, indexed = false, Vector(generator2), scope1)
+    scope1 shouldBe Scope.Aliased(path, indexed = true, Vector.empty, Vector.empty)
+    scope2 shouldBe Scope.Aliased(path, indexed = true, Vector.empty, Vector(Scope.Select.All -> scope1))
+    scope3 shouldBe Scope.Aliased(path, indexed = false, Vector.empty, Vector(Scope.Select.All -> scope1))
+    scope4 shouldBe Scope.Aliased(path, indexed = false, Vector.empty, Vector(Scope.Select.All -> scope1))
+    scope5 shouldBe Scope.Aliased(path, indexed = true, Vector(generator1), Vector(Scope.Select(name4) -> scope1))
+    scope6 shouldBe Scope.Aliased(path, indexed = true, Vector(generator2), Vector(Scope.Select.All -> scope1))
+    scope7 shouldBe Scope.Aliased(path, indexed = false, Vector(generator1), Vector.empty)
+    scope8 shouldBe Scope.Aliased(path, indexed = false, Vector(generator2), Vector(Scope.Select.All -> scope1))
+    val extended = Scope.Nested(scope1.indexed, scope1.generators, scope1.children)
+    scope1(name1) shouldBe extended
+    scope1(name2) shouldBe extended
+    scope2(name1) shouldBe scope1
+    scope2(name2) shouldBe scope1
+    scope3(name1) shouldBe scope1
+    scope3(name2) shouldBe scope1
+    scope3(name3) shouldBe scope1
+    scope4(name1) shouldBe scope1
+    scope4(name2) shouldBe scope1
+    scope4(name3) shouldBe scope1
   }
 
 }

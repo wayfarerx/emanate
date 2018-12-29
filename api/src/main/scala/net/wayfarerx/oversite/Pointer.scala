@@ -564,9 +564,6 @@ object Pointer {
     /** The supported variants of this asset type. */
     def variants: ListSet[Variant]
 
-    /** Returns the default extension for this variant. */
-    final def extensions: ListSet[Name] = variants flatMap (_.extensions)
-
     /**
      * Creates a pointer that searches the current location for an asset.
      *
@@ -673,9 +670,6 @@ object Pointer {
 
       /** Returns the asset this variant is bound to. */
       def asset: Asset = self
-
-      /** Returns the default extension for this variant. */
-      def extension: Name = extensions.head
 
     }
 

@@ -23,6 +23,7 @@ import java.net.URLClassLoader
 import java.nio.file.Paths
 
 import cats.effect.IO
+
 import org.scalatest.{FlatSpec, Matchers}
 
 /**
@@ -40,7 +41,7 @@ class NodeSpec extends FlatSpec with Matchers {
       Some(Author(name"wayfarerx", None, None)),
       Vector(Markup.Text("The root document."))
     )
-    site.root.children.unsafeRunSync().toSet shouldBe Set(site.test1, site.test2)
+    site.root.children.unsafeRunSync().toSet shouldBe Set(site.test1, site.test2, site.aliased)
     site.test1.name shouldBe name"test-1"
     site.test1.entity.unsafeRunSync() shouldBe Test1(
       name"test-document-1",
@@ -75,6 +76,15 @@ class NodeSpec extends FlatSpec with Matchers {
       Vector(Markup.Text("The deep document."))
     )
     site.deep.site.isInstanceOf[TestSite] shouldBe true
+
+    site.aliased.name shouldBe name"aliased"
+    site.aliased.entity.unsafeRunSync() shouldBe Aliased(
+      name"aliased-document",
+      Some(Author(name"wayfarerx", None, None)),
+      Vector(Markup.Text("The aliased document."))
+    )
+    site.aliased.children.unsafeRunSync() shouldBe Vector.empty
+    site.aliased.site.isInstanceOf[TestSite] shouldBe true
   }
 
   it should "load the titles of each page" in {
@@ -113,18 +123,27 @@ class NodeSpec extends FlatSpec with Matchers {
       .unsafeRunSync() shouldBe Pointer.Image(Path.empty, "images/wx-gear.png")
     site.test1.resolve(Pointer.Image(name"wx-gear"))
       .unsafeRunSync() shouldBe Pointer.Image(Location.empty, "images/wx-gear.png")
+    site.aliased.resolve(Pointer.Image(name"wx-gear"))
+      .unsafeRunSync() shouldBe Pointer.Image(Location.empty, "images/wx-gear.png")
     a[Node.Problem] should be thrownBy site.root.resolve(Pointer.Image(name"wx-gear-x3"))
       .unsafeRunSync()
     site.test1.resolve(Pointer.Image(name"wx-gear-x3"))
+      .unsafeRunSync() shouldBe Pointer.Image(Path.empty, "images/wx-gear-x3.png")
+    site.aliased.resolve(Pointer.Image(name"wx-gear-x3"))
       .unsafeRunSync() shouldBe Pointer.Image(Path.empty, "images/wx-gear-x3.png")
     site.root.resolve(Pointer.Image(Path.empty, "images/wx-gear.png"))
       .unsafeRunSync() shouldBe Pointer.Image(Path.empty, "images/wx-gear.png")
     site.test1.resolve(Pointer.Image(Location.empty, "images/wx-gear.png"))
       .unsafeRunSync() shouldBe Pointer.Image(Location.empty, "images/wx-gear.png")
+    site.aliased.resolve(Pointer.Image(Location.empty, "images/wx-gear.png"))
+      .unsafeRunSync() shouldBe Pointer.Image(Location.empty, "images/wx-gear.png")
     a[Node.Problem] should be thrownBy site.root.resolve(Pointer.Image(Path.empty, "images/wx-gear-x3.png"))
       .unsafeRunSync()
     site.test1.resolve(Pointer.Image(Path.empty, "images/wx-gear-x3.png"))
       .unsafeRunSync() shouldBe Pointer.Image(Path.empty, "images/wx-gear-x3.png")
+    site.aliased.resolve(Pointer.Image(Path.empty, "images/wx-gear-x3.png"))
+      .unsafeRunSync() shouldBe Pointer.Image(Path.empty, "images/wx-gear-x3.png")
+
   }
 
   it should "resolve page pointers" in {
@@ -193,7 +212,7 @@ object NodeSpec {
     lazy val root = {
       val file = Paths.get("model/src/test/resources/node-spec/site").toUri.toURL
       val resources = Resources.Classpath(new URLClassLoader(Array(file), getClass.getClassLoader))
-      Node.Root(classOf[TestSite].getName, resources).unsafeRunSync()
+      Node.Root[Home](classOf[TestSite].getName, resources).unsafeRunSync()
     }
 
     /** The test-1 node. */
@@ -215,6 +234,10 @@ object NodeSpec {
     /** The test-2/deep node. */
     lazy val deep =
       test2.children.unsafeRunSync().find(_.name == name"deep").get.asInstanceOf[Node.Branch[_ <: AnyRef]]
+
+    /** The aliased node. */
+    lazy val aliased =
+      root.children.unsafeRunSync().find(_.name == name"aliased").get.asInstanceOf[Node.Branch[_ <: AnyRef]]
 
   }
 
@@ -267,6 +290,14 @@ object NodeSpec {
     implicit val decoder: Decoder[Test2Nested] = Model.decoder { case (n, a, d) => Test2Nested(n, a, d) }
   }
 
+  /** The test-2 nested entity. */
+  case class Aliased(name: Name, author: Option[Author], description: Vector[Markup.Inline]) extends Model
+
+  /** Provides the decoder for test-2 nested entities. */
+  object Aliased {
+    implicit val decoder: Decoder[Aliased] = Model.decoder { case (n, a, d) => Aliased(n, a, d) }
+  }
+
   /** The site fixture. */
   final class TestSite extends Site[Home] {
 
@@ -285,7 +316,8 @@ object NodeSpec {
           _ => IO.pure("img { border: 0; }".getBytes("UTF-8"))
         )),
         Scope.Select(name"nested") -> Scope[Test2Nested]()
-      )
+      ),
+      Scope.Select(name"aliased") -> Scope.Aliased[Aliased](Path("aliased/resources"))
     )
 
   }

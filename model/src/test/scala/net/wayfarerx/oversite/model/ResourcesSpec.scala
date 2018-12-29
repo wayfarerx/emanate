@@ -32,19 +32,20 @@ import org.scalatest.{FlatSpec, Matchers}
  */
 class ResourcesSpec extends FlatSpec with Matchers {
 
-  "Resources" should "find and list files from directories" in {
+  "Resources" should "find and list bootstram files" in {
+    Resources.Default.find("item").unsafeRunSync() shouldBe None
+    Resources.Default.detect("item").unsafeRunSync() shouldBe Vector.empty
+    Resources.Default.list("item").unsafeRunSync() shouldBe Vector.empty
+    Resources.Default.load("java.lang.Object").unsafeRunSync() shouldBe classOf[Object]
+  }
+
+  it should "find and list files from directories" in {
     val file = Paths.get("model/src/test/resources/resources-spec/file-element").toUri.toURL
     val resources = Resources.Classpath(new URLClassLoader(Array(file), ClassLoader.getSystemClassLoader))
-    resources.find("oversite").unsafeRunSync().map(_.toExternalForm) shouldBe
-      Some(file.toExternalForm + "oversite/")
-    resources.find("oversite/both/").unsafeRunSync().map(_.toExternalForm) shouldBe
-      Some(file.toExternalForm + "oversite/both/")
     resources.find("oversite/both/both.txt").unsafeRunSync().map(_.toExternalForm) shouldBe
       Some(file.toExternalForm + "oversite/both/both.txt")
-    resources.find("oversite/file").unsafeRunSync().map(_.toExternalForm) shouldBe
-      Some(file.toExternalForm + "oversite/file/")
-    resources.find("oversite/file/item.txt").unsafeRunSync().map(_.toExternalForm) shouldBe
-      Some(file.toExternalForm + "oversite/file/item.txt")
+    resources.detect("oversite/file/item.txt").unsafeRunSync().map(_.toExternalForm) shouldBe
+      Vector(file.toExternalForm + "oversite/file/item.txt")
     resources.find("oversite/both/both.txt").flatMap(_ map readUrl getOrElse IO.pure(None))
       .unsafeRunSync() shouldBe Some("file-both")
     resources.find("oversite/file/item.txt").flatMap(_ map readUrl getOrElse IO.pure(None))
@@ -53,7 +54,7 @@ class ResourcesSpec extends FlatSpec with Matchers {
     resources.find("oversite/_file/").unsafeRunSync().map(_.toExternalForm) shouldBe None
     resources.find("oversite/file/_item.txt").unsafeRunSync().map(_.toExternalForm) shouldBe None
     resources.list("oversite").unsafeRunSync().sorted shouldBe
-      Vector("oversite/both/", "oversite/file/")
+      Vector("oversite/both", "oversite/file")
     resources.list("oversite/both/").unsafeRunSync().sorted shouldBe
       Vector("oversite/both/both.txt")
     resources.list("oversite/file/").unsafeRunSync().sorted shouldBe
@@ -64,16 +65,10 @@ class ResourcesSpec extends FlatSpec with Matchers {
   it should "find and list files from jars" in {
     val jar = Paths.get("model/src/test/resources/resources-spec/jar-element.jar").toUri.toURL
     val resources = Resources.Classpath(new URLClassLoader(Array(jar), ClassLoader.getSystemClassLoader))
-    resources.find("oversite").unsafeRunSync().map(_.toExternalForm) shouldBe
-      Some(s"jar:${jar.toExternalForm}!/oversite/")
-    resources.find("oversite/both").unsafeRunSync().map(_.toExternalForm) shouldBe
-      Some(s"jar:${jar.toExternalForm}!/oversite/both/")
     resources.find("oversite/both/both.txt").unsafeRunSync().map(_.toExternalForm) shouldBe
       Some(s"jar:${jar.toExternalForm}!/oversite/both/both.txt")
-    resources.find("oversite/jar/").unsafeRunSync().map(_.toExternalForm) shouldBe
-      Some(s"jar:${jar.toExternalForm}!/oversite/jar/")
-    resources.find("oversite/jar/item.txt").unsafeRunSync().map(_.toExternalForm) shouldBe
-      Some(s"jar:${jar.toExternalForm}!/oversite/jar/item.txt")
+    resources.detect("oversite/jar/item.txt").unsafeRunSync().map(_.toExternalForm) shouldBe
+      Vector(s"jar:${jar.toExternalForm}!/oversite/jar/item.txt")
     resources.find("oversite/both/both.txt").flatMap(_ map readUrl getOrElse IO.pure(None))
       .unsafeRunSync() shouldBe Some("jar-both")
     resources.find("oversite/jar/item.txt").flatMap(_ map readUrl getOrElse IO.pure(None))

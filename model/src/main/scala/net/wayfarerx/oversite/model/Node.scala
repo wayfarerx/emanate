@@ -22,11 +22,11 @@ package model
 import java.net.URL
 
 import language.existentials
+import util.control.NoStackTrace
 
 import io.{Codec, Source}
-import cats.effect.IO
 
-import scala.util.control.NoStackTrace
+import cats.effect.IO
 
 /**
  * Base type for all nodes.
@@ -42,9 +42,9 @@ sealed trait Node[T <: AnyRef] extends Context {
 
   /** The title of this node. */
   final val title: IO[Name] = Cached(IO(Source.fromURL(resource)(Codec.UTF8)).bracket { source =>
-    IO(source.getLines.map(_.trim).dropWhile(_.isEmpty).buffered.headOption) flatMap (_ flatMap {
+    IO(source.getLines.map(_.trim).dropWhile(_.isEmpty).buffered.headOption) flatMap (_.collect {
       case head if head.startsWith("#") && !head.startsWith("##") => Name(head substring 1)
-    } map IO.pure getOrElse Problem.raise(s"Unable to load title from $location"))
+    }.flatten map IO.pure getOrElse Problem.raise(s"Unable to load title from $location"))
   }(s => IO(s.close())))()
 
   /** The document loaded for this node. */
@@ -62,6 +62,9 @@ sealed trait Node[T <: AnyRef] extends Context {
 
   /** The scope of this node. */
   def scope: Scope[T]
+
+  /** The path to the resource. */
+  def source: Path
 
   /** The resource that describes this node. */
   def resource: URL
@@ -233,7 +236,7 @@ sealed trait Node[T <: AnyRef] extends Context {
   ): IO[(Node[_ <: AnyRef], Path, String)] =
     canonicalAsset(prefix, suffix) flatMap { case (node, path, file) =>
       if (node.generates(path, file)) IO.pure((node, path, file))
-      else resources find node.location.toString + path + file flatMap {
+      else resources find node.source.toString + path + file flatMap {
         _ map (_ => IO.pure((node, path, file))) getOrElse[IO[(Node[_ <: AnyRef], Path, String)]]
           Problem.raise(s"Cannot find asset ${node.location}$path$file")
       }
@@ -260,7 +263,7 @@ sealed trait Node[T <: AnyRef] extends Context {
           case head +: tail =>
             val file = s"$query.$head"
             if (node.generates(path, file)) IO.pure(Some(file))
-            else resources find node.location.toString + path + file flatMap {
+            else resources find node.source.toString + path + file flatMap {
               _ map (_ => IO.pure(Some(file))) getOrElse finding(node, tail)
             }
           case _ => IO.pure(None)
@@ -332,6 +335,7 @@ sealed trait Node[T <: AnyRef] extends Context {
  */
 object Node {
 
+  /** The name of the file that describes a parent node. */
   val IndexFile: String = "index.md"
 
   /**
@@ -344,28 +348,46 @@ object Node {
     /** The children of this node. */
     final val children: IO[Vector[Child[_ <: AnyRef]]] = Cached {
 
-      def process(remaining: Vector[String]): IO[Vector[Child[_ <: AnyRef]]] = remaining match {
-        case head +: tail if (head.toLowerCase match {
-          case nested => nested.endsWith(".md") && !(nested == IndexFile || nested.endsWith(s"/$IndexFile"))
-        }) =>
+      def findNested(remaining: Vector[String]): IO[Vector[Child[_ <: AnyRef]]] = remaining match {
+        case head +: tail if head.endsWith(".md") && !(head == IndexFile || head.endsWith(s"/$IndexFile")) =>
           for {
             u <- resources.find(head)
-            t <- process(tail)
-          } yield u.flatMap { doc =>
-            Name(head substring head.lastIndexOf('/') + 1 dropRight 3) map (n => Leaf(this, n, scope(n), doc))
-          }.toVector ++ t
+            t <- findNested(tail)
+          } yield u.flatMap(d => Name(head substring head.lastIndexOf('/') + 1 dropRight 3).map(d -> _)) flatMap {
+            case (d, n) => scope(n) match {
+              case s@Scope.Nested(_, _, _) => Some(Leaf(this, n, s, d) +: t)
+              case _ => None
+            }
+          } getOrElse t
         case head +: tail =>
           val path = Path(head)
           for {
             u <- resources.find(path + IndexFile)
-            t <- process(tail)
-          } yield u flatMap (uu => Name(path.elements.last.toString) map (uu -> _)) map { case (uu, n) =>
-            Branch(this, n, scope(n), uu) +: t
+            t <- findNested(tail)
+          } yield u flatMap (d => Name(path.elements.last.toString) map (d -> _)) flatMap {
+            case (d, n) => scope(n) match {
+              case s@Scope.Nested(_, _, _) => Some(Branch(this, n, s, d) +: t)
+              case _ => None
+            }
           } getOrElse t
         case _ => IO.pure(Vector.empty)
       }
 
-      resources.list(location.path.toString) flatMap process
+      def findAliased(remaining: Vector[(Name, Scope.Aliased[_ <: AnyRef])]): IO[Vector[Child[_ <: AnyRef]]] =
+        remaining match {
+          case (name, head) +: tail => for {
+            u <- resources.find(head.path + IndexFile)
+            t <- findAliased(tail)
+          } yield u map (Branch(this, name, head, _) +: t) getOrElse t
+          case _ => IO.pure(Vector.empty)
+        }
+
+      for {
+        nested <- resources.list(source.toString) flatMap findNested
+        aliased <- findAliased(scope.children collect {
+          case (Scope.Select.Matching(name), s@Scope.Aliased(_, _, _, _)) => name -> s
+        })
+      } yield nested ++ aliased
     }()
 
   }
@@ -389,6 +411,12 @@ object Node {
 
     /* Return the parent's site. */
     final override def site: Site[_ <: AnyRef] = parent.site
+
+    /* Determine the source. */
+    final override def source: Path = scope match {
+      case Scope.Nested(_, _, _) => parent.source :+ name
+      case Scope.Aliased(path, _, _, _) => path
+    }
 
     /* Return the parent's resources. */
     final override def resources: Resources = parent.resources
@@ -426,6 +454,12 @@ object Node {
     /* Return the root scope. */
     override def scope: Scope[T] = site.scopes
 
+    /* Determine the root source. */
+    override def source: Path = scope match {
+      case Scope.Nested(_, _, _) => Path.empty
+      case Scope.Aliased(path, _, _, _) => path
+    }
+
     /* Resolve an author in the site. */
     override def resolve(author: Author): IO[Author] = authors map (_ (author.name) getOrElse author)
 
@@ -437,30 +471,49 @@ object Node {
   object Root {
 
     /**
-     * Attempts to create a root node by loading the specified site from the resources.
-     *
-     * @param siteClassName The name of the site implementation to load.
-     * @param resources     The resources to use.
-     * @return The result of attempting to create a root node by loading the specified site from the resources.
-     */
-    def apply(siteClassName: String, resources: Resources): IO[Root[_ <: AnyRef]] =
-      resources.load(siteClassName).flatMap[Root[_ <: AnyRef]] { cls =>
-        IO(cls.newInstance.asInstanceOf[Site[_ <: AnyRef]]) flatMap (apply(_, resources))
-      }
-
-    /**
-     * Attempts to create a root node from the specified site and resources.
+     * Attempts to create a root node from the specified site implementation and the context class loader.
      *
      * @tparam T The type of entity the site publishes.
-     * @param site      The site to mode.
-     * @param resources The resources to use.
+     * @param siteImplementation The name of the site implementation to use.
+     * @return The result of attempting to create a root node from the specified site site implementation.
+     */
+    def apply[T <: AnyRef](siteImplementation: String): IO[Root[T]] =
+      apply(siteImplementation, None)
+
+    /**
+     * Attempts to create a root node from the specified site implementation and the specified resources.
+     *
+     * @tparam T The type of entity the site publishes.
+     * @param siteImplementation The name of the site implementation to use.
+     * @param resources          The resources to use.
+     * @return The result of attempting to create a root node from the specified site site implementation.
+     */
+    def apply[T <: AnyRef](siteImplementation: String, resources: Resources): IO[Root[T]] =
+      apply(siteImplementation, Some(resources))
+
+    /**
+     * Attempts to create a root node from the specified input and resources.
+     *
+     * @tparam T The type of entity the site publishes.
+     * @param siteImplementation The input to use.
+     * @param resources          The resources to use.
      * @return The result of attempting to create a root node from the specified site and resources.
      */
-    def apply[T <: AnyRef](site: Site[T], resources: Resources): IO[Root[T]] =
-      resources find Node.IndexFile flatMap {
-        _ map (doc => IO.pure(Root[T](site, doc, resources))) getOrElse
-          Problem.raise(s"Cannot find root document $IndexFile")
-      }
+    def apply[T <: AnyRef](siteImplementation: String, resources: Option[Resources]): IO[Root[T]] =
+      for {
+        res <- IO {
+          resources orElse {
+            Option(Thread.currentThread.getContextClassLoader)
+              .orElse(Option(getClass.getClassLoader))
+              .map(Resources.Classpath(_))
+          } getOrElse Resources.Default
+        }
+        site <- res.load(siteImplementation) flatMap (c => IO(c.newInstance.asInstanceOf[Site[T]]))
+        resource <- (site.scopes match {
+          case Scope.Nested(_, _, _) => res.find(IndexFile)
+          case Scope.Aliased(p, _, _, _) => res.find(p + IndexFile)
+        }) flatMap (_ map IO.pure getOrElse Problem.raise("Unable to find root index file."))
+      } yield Root(site, resource, res)
 
   }
 

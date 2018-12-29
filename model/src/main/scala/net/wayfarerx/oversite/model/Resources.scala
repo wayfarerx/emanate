@@ -24,6 +24,8 @@ import java.nio.file.{Files, Paths, Path => JPath}
 import java.util.jar.JarFile
 
 import collection.JavaConverters._
+import io.Source
+
 import cats.effect.IO
 
 /**
@@ -32,21 +34,20 @@ import cats.effect.IO
 trait Resources {
 
   /**
-   * Attempts to return the URL of a specific resource if it exists.
+   * Attempts to find the URL of a specific resource if it exists.
    *
    * @param resource The name of the resource to look up.
    * @return The result of attempting to return the URL of a specific resource if it exists.
    */
-  final def find(resource: Path.Regular): IO[Option[URL]] =
-    search(resource) map (_.headOption)
+  def find(resource: Path.Regular): IO[Option[URL]]
 
   /**
-   * Looks up the URLs provided for a specific resource.
+   * Attempts to detect all available URLs for a specific resource.
    *
    * @param resource The name of the resource to look up.
    * @return The URLs provided for a specific resource.
    */
-  def search(resource: Path.Regular): IO[Vector[URL]]
+  def detect(resource: Path.Regular): IO[Vector[URL]]
 
   /**
    * Attempts to list the resources contained in a directory.
@@ -60,7 +61,7 @@ trait Resources {
    * Attempts to load a class from this collection of resources.
    *
    * @param className The name of the class to load.
-   * @return  The result of attempting to load a class from this collection of resources.
+   * @return The result of attempting to load a class from this collection of resources.
    */
   def load(className: String): IO[Class[_]]
 
@@ -72,342 +73,259 @@ trait Resources {
 object Resources {
 
   /**
-   * The resources available on the classpath.
-   *
-   * @param classLoader The URL class loader to use.
+   * The default resource collection bound to the bootstrap class loader.
    */
-  case class Classpath(classLoader: ClassLoader) extends Resources {
+  object Default extends Resources {
+
+    /* Cannot load resources from the bootstrap class loader. */
+    def find(resource: Path.Regular): IO[Option[URL]] =
+      IO.pure(None)
+
+    /* Cannot load resources from the bootstrap class loader. */
+    override def detect(resource: Path.Regular): IO[Vector[URL]] =
+      IO.pure(Vector())
+
+    /* Cannot load resources from the bootstrap class loader. */
+    override def list(directory: Path.Regular): IO[Vector[String]] =
+      IO.pure(Vector())
+
+    /* Load a class from the bootstrap class loader. */
+    override def load(className: String): IO[Class[_]] =
+      IO(Class.forName(className, true, null))
+
+  }
+
+  /**
+   * Base type for resource collections based on class loaders.
+   */
+  sealed trait Classpath extends Resources {
 
     import Classpath._
 
-    /** The source to load resources from. */
-    private val source = Source(classLoader)
+    /** The type of class loader to use. */
+    type ClassLoaderType <: ClassLoader
 
-    /* Attempt to return the URLs for a specific resource if it exists. */
-    override def search(resource: Path.Regular): IO[Vector[URL]] =
-      Query(resource) map source.search getOrElse IO.pure(Vector.empty)
+    /** The class loader to use. */
+    def classLoader: ClassLoaderType
 
-    /* Attempt to list the resources contained in a directory. */
-    override def list(directory: Path.Regular): IO[Vector[String]] =
-      Query(directory) map source.list getOrElse IO.pure(Vector.empty)
+    /* Find resources in the underlying class loader. */
+    final override def find(resource: Path.Regular): IO[Option[URL]] =
+      select(resource) map (r => IO(Option(classLoader.getResource(r)))) getOrElse IO.pure(None)
 
-    /* Attempt to load the specified class. */
-    override def load(className: String): IO[Class[_]] =
+    /* Detect resources in the underlying class loader. */
+    final override def detect(resource: Path.Regular): IO[Vector[URL]] =
+      select(resource) map (r => IO(classLoader.getResources(r).asScala.toVector)) getOrElse IO.pure(Vector())
+
+    /* Load a class from the underlying class loader. */
+    final override def load(className: String): IO[Class[_]] =
       IO(classLoader.loadClass(className))
 
   }
 
   /**
-   * Support for class paths.
+   * Definitions associated with classpaths.
    */
   object Classpath {
 
     /** The UTF-8 encoding. */
     private val UTF8 = "UTF-8"
 
+    /** The lower case name of the `META-INF` directory. */
+    private val META_INF = "meta-inf"
+
     /**
-     * A normalized, formal query for a class path.
+     * Creates a classpath from a class loader.
      *
-     * @param path The normalized, formal path the class path.
+     * @param classLoader The class loader to use.
+     * @return The derived classpath.
      */
-    private class Query private(val path: String) extends AnyVal
+    def apply(classLoader: ClassLoader): Classpath = classLoader match {
+      case urls: URLClassLoader => URLs(urls)
+      case generic => Generic(generic)
+    }
 
     /**
-     * Factory for normalized, formal query for a class path.
+     * Selects the specified path if it is not ignored.
+     *
+     * @param path The path to test.
+     * @return The specified path if it was selected.
      */
-    private object Query {
-
-      /** The lower case name of the `META-INF` directory. */
-      private val META_INF = "meta-inf"
-
-      /**
-       * Attempts to create a new query.
-       *
-       * @param path The path to query.
-       * @return A new query if one can be created.
-       */
-      def apply(path: Path.Regular): Option[Query] = {
-        val normal: Path.Regular = if (path startsWith "/") path substring 1 else path
-        normal.toLowerCase match {
-          case META_INF => None
-          case meta if meta startsWith s"$META_INF/" => None
-          case cls if cls endsWith ".class" => None
-          case _ => Some(new Query(normal))
-        }
+    private def select(path: Path.Regular): Option[Path.Regular] = {
+      val normal: Path.Regular = if (path startsWith "/") path substring 1 else path
+      normal.toLowerCase match {
+        case META_INF => None
+        case meta if meta startsWith s"$META_INF/" => None
+        case cls if cls endsWith ".class" => None
+        case _ => Some(normal)
       }
+    }
+
+    /**
+     * The generic class loader classpath.
+     *
+     * @param classLoader The generic class loader to use.
+     */
+    case class Generic(classLoader: ClassLoader) extends Classpath {
+
+      /* Use any class loader. */
+      override type ClassLoaderType = ClassLoader
+
+      /* Try to list resources in the underlying class loader. */
+      override def list(directory: Path.Regular): IO[Vector[String]] =
+        select(directory) map (Path(_)) map { path =>
+          IO(Option(classLoader.getResourceAsStream(path.toString))).bracket {
+            _ map { stream =>
+              for {
+                children <- IO(Source.fromInputStream(stream, UTF8).getLines.map(_.trim).filterNot(_.isEmpty).toVector)
+                results <- (IO.pure(Vector.empty[String]) /: children) { (previous, child) =>
+                  previous flatMap { collected =>
+                    val resource = path + child
+                    find(resource) map (_ map (_ => collected :+ resource) getOrElse collected)
+                  }
+                }
+              } yield results
+            } getOrElse IO.pure(Vector.empty)
+          }(s => IO(s foreach (_.close())))
+        } getOrElse IO.pure(Vector.empty)
 
     }
 
     /**
-     * Base type for sources of resources.
+     * The URL class loader classpath.
+     *
+     * @param classLoader The URL class loader to use.
      */
-    private sealed trait Source {
+    case class URLs(classLoader: URLClassLoader) extends Classpath {
 
-      /**
-       * Searches for all resources that satisfy the specified query.
-       *
-       * @param query The query to satisfy.
-       * @return The matching resources.
-       */
-      def search(query: Query): IO[Vector[URL]]
+      /* Use URL class loaders. */
+      override type ClassLoaderType = URLClassLoader
+
+      /** The parent of this URL classpath. */
+      val parent: Resources = Option(classLoader.getParent) map (Classpath(_)) getOrElse Default
+
+      /** The URLs referenced by this source. */
+      private val entries = Cached {
+
+        /* Qualify all the URLs. */
+        def load(remaining: Vector[URL]): IO[Vector[Entry]] = remaining match {
+          case head +: tail => for {
+            h <- Entry(head)
+            t <- load(tail)
+          } yield h map (_ +: t) getOrElse t
+          case _ => IO.pure(Vector.empty)
+        }
+
+        load(classLoader.getURLs.toVector)
+      }()
+
+      /* Try to list resources from the underlying class loader's URLs and the parent resources. */
+      override def list(directory: Path.Regular): IO[Vector[String]] =
+        select(directory) map (Path(_)) map { path =>
+
+          /* List from each URL. */
+          def process(remaining: Vector[Entry]): IO[Vector[String]] = remaining match {
+            case head +: tail => for {
+              h <- head.list(path)
+              t <- process(tail)
+            } yield h ++ t
+            case _ => IO.pure(Vector.empty)
+          }
+
+          for {
+            inherited <- parent list directory
+            provided <- entries flatMap process
+          } yield inherited ++ provided
+        } getOrElse IO.pure(Vector.empty)
+
+    }
+
+    /**
+     * Base type for URL classpath entries that resources can be loaded from.
+     */
+    private sealed trait Entry {
 
       /**
        * Lists the contents of a directory.
        *
-       * @param query The query that specifies the directory.
-       * @return The contents of the queried directory.
+       * @param directory The path that specifies the directory.
+       * @return The contents of the specified directory.
        */
-      def list(query: Query): IO[Vector[String]]
+      def list(directory: Path): IO[Vector[String]]
 
     }
 
     /**
-     * Factory for sources of resources.
+     * Factory for URL classpath entries.
      */
-    private object Source {
+    private object Entry {
 
       /**
-       * Creates a source from a class loader.
+       * Attempts to create a classpath entry for the specified URL.
        *
-       * @param classLoader The class loader to use as a source.
-       * @return A source for the specified class loader.
+       * @param url The URL to create a classpath entry for.
+       * @return The classpath entry if one could be created.
        */
-      def apply(classLoader: ClassLoader): Source = classLoader match {
-        case urls: URLClassLoader => URLs(urls)
-        case other => Generic(other)
-      }
-
-      /**
-       * Support for generic class loaders.
-       *
-       * @param classLoader The class loader to create a source for.
-       */
-      private case class Generic(classLoader: ClassLoader) extends Source {
-
-        /* Search the class loader for resources. */
-        override def search(query: Query): IO[Vector[URL]] =
-          IO(classLoader.getResources(query.path)) map (_.asScala.toVector)
-
-        /* Attempt to list the child resources. */
-        override def list(query: Query): IO[Vector[String]] =
-          IO(Option(classLoader.getResourceAsStream(query.path))).bracket {
-            case Some(stream) =>
-              IO(io.Source.fromInputStream(stream, UTF8).getLines() map (_.trim) filterNot (_.isEmpty)) map {
-                _.map(line => Path.Regular(s"${query.path}/$line").string).toVector
-              }
-            case None =>
-              IO.pure(Vector.empty)
-          }(s => IO(s foreach (_.close())))
-
-      }
-
-      /**
-       * Support for URL class loaders.
-       *
-       * @param classLoader The class loader to create a source for.
-       */
-      private case class URLs(classLoader: URLClassLoader) extends Source {
-
-        import URLs._
-
-        /** The parent of this source if one exists. */
-        private val parent = Option(classLoader.getParent) map (Source(_))
-
-        /** The URLs referenced by this source. */
-        private val entries = Cached {
-
-          /* Qualify all the URLs. */
-          def load(remaining: Vector[URL]): IO[Vector[Entry]] = remaining match {
-            case head +: tail => for {
-              h <- Entry(head)
-              t <- load(tail)
-            } yield h map (_ +: t) getOrElse t
-            case _ => IO.pure(Vector.empty)
-          }
-
-          load(classLoader.getURLs.toVector)
+      def apply(url: URL): IO[Option[Entry]] = if (url.getProtocol equalsIgnoreCase "file") {
+        url match {
+          case fileUrl if fileUrl.toExternalForm.endsWith("/") => for {
+            path <- IO(Paths get fileUrl.toURI)
+            directory <- IO(Files.isDirectory(path))
+          } yield if (directory) Some(FileEntry(path)) else None
+          case jarUrl => for {
+            path <- IO(Paths get jarUrl.toURI)
+            regularFile <- IO(Files.isRegularFile(path))
+          } yield if (regularFile) Some(JarEntry(path)) else None
         }
+      } else IO.pure(None)
 
-        /* Search the URLs and then search the parent. */
-        override def search(query: Query): IO[Vector[URL]] = {
+      /**
+       * File classpath entry.
+       *
+       * @param file The root of the classpath entry.
+       */
+      private case class FileEntry(file: JPath) extends Entry {
 
-          /* Search in each URL. */
-          def searching(remaining: Vector[Entry]): IO[Vector[URL]] = remaining match {
-            case head +: tail => for {
-              h <- head.search(query)
-              t <- searching(tail)
-            } yield h ++ t
+        /* List in the file. */
+        override def list(directory: Path): IO[Vector[String]] = {
+
+          // Recursively process results.
+          def results(remaining: Vector[JPath]): IO[Vector[String]] = remaining match {
+            case head +: tail => results(tail) map { t =>
+              head.subpath(file.getNameCount, head.getNameCount).toString.replace('\\', '/') +: t
+            }
             case _ => IO.pure(Vector.empty)
           }
 
           for {
-            inherited <- parent map (_.search(query)) getOrElse IO.pure(Vector.empty)
-            provided <- entries() flatMap searching
-          } yield inherited ++ provided
-        }
-
-        /* List from the URLs and then list from the parent. */
-        override def list(query: Query): IO[Vector[String]] = {
-
-          /* List from each URL. */
-          def listing(remaining: Vector[Entry]): IO[Vector[String]] = remaining match {
-            case head +: tail => for {
-              h <- head.list(query)
-              t <- listing(tail)
-            } yield h ++ t
-            case _ => IO.pure(Vector.empty)
-          }
-
-          for {
-            inherited <- parent map (_.list(query)) getOrElse IO.pure(Vector.empty)
-            provided <- entries() flatMap listing
-          } yield inherited ++ provided
+            path <- IO(file.resolve(directory.toString))
+            okay <- IO(Files.isDirectory(path))
+            result <- if (okay) {
+              IO(Files.list(path).iterator.asScala.toVector) flatMap results
+            } else IO.pure(Vector.empty)
+          } yield result
         }
 
       }
 
       /**
-       * Definitions associated with URL class loaders.
+       * JAR classpath entry.
+       *
+       * @param jar The root of the classpath entry.
        */
-      private object URLs {
+      private case class JarEntry(jar: JPath) extends Entry {
 
-        /**
-         * Base type for URL classpath entries that resources can be loaded from.
-         */
-        private sealed trait Entry {
-
-          /**
-           * Searches for all resources that satisfy the specified query.
-           *
-           * @param query The query to satisfy.
-           * @return The matching resources.
-           */
-          def search(query: Query): IO[Vector[URL]]
-
-          /**
-           * Lists the contents of a directory.
-           *
-           * @param query The query that specifies the directory.
-           * @return The contents of the queried directory.
-           */
-          def list(query: Query): IO[Vector[String]]
-
-        }
-
-        /**
-         * Factory for URL classpath entries.
-         */
-        private object Entry {
-
-          /**
-           * Attempts to create a classpath entry for the specified URL.
-           *
-           * @param url The URL to create a classpath entry for.
-           * @return The classpath entry if one could be created.
-           */
-          def apply(url: URL): IO[Option[Entry]] = if (url.getProtocol equalsIgnoreCase "file") {
-            url match {
-              case fileUrl if fileUrl.toExternalForm.endsWith("/") => for {
-                path <- IO(Paths get fileUrl.toURI)
-                directory <- IO(Files.isDirectory(path))
-              } yield if (directory) Some(FileEntry(path)) else None
-              case jarUrl => for {
-                path <- IO(Paths get jarUrl.toURI)
-                regularFile <- IO(Files.isRegularFile(path))
-              } yield if (regularFile) Some(JarEntry(path)) else None
-            }
-          } else IO.pure(None)
-
-          /**
-           * Ensures that a path is in directory form.
-           *
-           * @param path The path to a directory.
-           * @return The directory form of the path.
-           */
-          private def ensureDirectory(path: Path.Regular): Path.Regular =
-            if (!path.endsWith("/")) path.string + "/" else path.string
-
-          /**
-           * File classpath entry.
-           *
-           * @param file The root of the classpath entry.
-           */
-          private case class FileEntry(file: JPath) extends Entry {
-
-            /* Search in the file. */
-            override def search(query: Query): IO[Vector[URL]] = for {
-              path <- IO(file.resolve(query.path))
-              exists <- IO(Files.exists(path))
-              result <- if (exists) IO(Vector(path.toUri.toURL)) else IO.pure(Vector.empty)
-            } yield result
-
-            /* List in the file. */
-            override def list(query: Query): IO[Vector[String]] = {
-
-              // Recursively process results.
-              def results(remaining: Vector[JPath]): IO[Vector[String]] = remaining match {
-                case head +: tail => for {
-                  directory <- IO(Files.isDirectory(head))
-                  t <- results(tail)
-                } yield Query(head.subpath(file.getNameCount, head.getNameCount).toString)
-                  .map(q => if (directory) ensureDirectory(q.path).string else q.path)
-                  .toVector ++ t
-                case _ => IO.pure(Vector.empty)
+        /* List in the JAR. */
+        override def list(directory: Path): IO[Vector[String]] =
+          IO(new JarFile(jar.toFile)).bracket { jarFile =>
+            val prefix = directory.toString
+            IO(jarFile.entries.asScala.filter { entry =>
+              entry.getName != prefix &&
+                entry.getName.startsWith(prefix) && {
+                val index = entry.getName.indexOf('/', prefix.length)
+                index < 0 || index == entry.getName.length - 1
               }
-
-              for {
-                path <- IO(file.resolve(query.path))
-                directory <- IO(Files.isDirectory(path))
-                result <- if (directory) {
-                  IO(Files.list(path).iterator.asScala.toVector) flatMap results
-                } else IO.pure(Vector.empty)
-              } yield result
-            }
-
-          }
-
-          /**
-           * JAR classpath entry.
-           *
-           * @param jar The root of the classpath entry.
-           */
-          private case class JarEntry(jar: JPath) extends Entry {
-
-            /* Search in the JAR. */
-            override def search(query: Query): IO[Vector[URL]] = withJarFile { jarFile =>
-              IO(jarFile.entries.asScala find { entry =>
-                entry.getName == query.path || entry.getName.startsWith(ensureDirectory(query.path).string)
-              }) map (_.map { entry =>
-                val suffix = if (entry.getName endsWith "/") ensureDirectory(query.path).string else query.path
-                new URL(s"jar:${jar.toUri.toURL}!/$suffix")
-              }.toVector)
-            }
-
-            /* List in the JAR. */
-            override def list(query: Query): IO[Vector[String]] = withJarFile { jarFile =>
-              val prefix = ensureDirectory(query.path)
-              IO(jarFile.entries.asScala.filter { entry =>
-                entry.getName != prefix.string &&
-                  entry.getName.startsWith(prefix) && {
-                  val index = entry.getName.indexOf('/', prefix.length)
-                  index < 0 || index == entry.getName.length - 1
-                }
-              }.map(_.getName).flatMap(Query(_)).map(_.path).toVector)
-            }
-
-            /**
-             * Runs a function with a valid JAR file.
-             *
-             * @tparam T The return type.
-             * @param f The function to run.
-             * @return The result of running the function.
-             */
-            private def withJarFile[T](f: JarFile => IO[T]): IO[T] =
-              IO(new JarFile(jar.toFile)).bracket(f)(jarFile => IO(jarFile.close()))
-
-          }
-
-        }
+            }.map(_.getName).toVector)
+          }(jarFile => IO(jarFile.close()))
 
       }
 

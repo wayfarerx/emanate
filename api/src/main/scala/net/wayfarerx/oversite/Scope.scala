@@ -23,30 +23,32 @@ import reflect.ClassTag
 import cats.effect.IO
 
 /**
- * A typed scope in a site.
+ * Base type for scopes in a site.
  *
- * @tparam T The type of entities contained in this scope.
- * @param generators The asset generators for this scope.
- * @param children   The scope selectors for children of this scope.
- * @param indexed    True if this scope is indexed.
+ * @tparam T The type of entity contained in this scope.
  */
-case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
-  generators: Vector[Scope.Generator],
-  children: Vector[(Scope.Select, Scope[_ <: AnyRef])],
-  indexed: Boolean
-) {
+sealed trait Scope[T <: AnyRef] {
 
   /** The type of entities contained in this scope. */
-  def classTag: ClassTag[T] = implicitly[ClassTag[T]]
+  def classTag: ClassTag[T]
 
   /** The decoder for the entities contained in this scope. */
-  def decoder: Decoder[T] = implicitly[Decoder[T]]
+  def decoder: Decoder[T]
 
   /** The publisher for the entities contained in this scope. */
-  def publisher: Publisher[T] = implicitly[Publisher[T]]
+  def publisher: Publisher[T]
+
+  /** True if the children of this scope are indexed. */
+  def indexed: Boolean
+
+  /** The asset generators for this scope. */
+  def generators: Vector[Scope.Generator]
+
+  /** The selectors for children of this scope. */
+  def children: Vector[(Scope.Select, Scope[_ <: AnyRef])]
 
   /** Returns this scope as an unspecified extension of itself. */
-  def extended: Scope[T] = if (generators.isEmpty) this else copy(Vector.empty)
+  def extended: Scope[T]
 
   /**
    * Returns the specified child of this scope.
@@ -54,7 +56,8 @@ case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
    * @param name The name that identifies the child scope.
    * @return The scope for the specified child of this scope.
    */
-  def apply(name: Name): Scope[_ <: AnyRef] = search(name) getOrElse extended
+  final def apply(name: Name): Scope[_ <: AnyRef] =
+    search(name) getOrElse extended
 
   /**
    * Returns the specified child of this scope if one exists.
@@ -62,7 +65,7 @@ case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
    * @param name The name that identifies the child scope.
    * @return The specified child of this scope if one exists.
    */
-  def search(name: Name): Option[Scope[_ <: AnyRef]] = children collectFirst {
+  final def search(name: Name): Option[Scope[_ <: AnyRef]] = children collectFirst {
     case (Scope.Select.Matching(n), child) if n == name => child
     case (Scope.Select.All, child) => child
   }
@@ -74,8 +77,14 @@ case class Scope[T <: AnyRef : ClassTag : Decoder : Publisher](
  */
 object Scope {
 
+  /** The default indexed setting. */
+  def DefaultIndexed: Boolean = true
+
+  /** The default generators setting. */
+  def DefaultGenerators: Vector[Generator] = Vector.empty
+
   /**
-   * Creates a scope with all children using the specified child scope.
+   * Creates an indexed scope with all children using the specified child scope.
    *
    * @tparam T The type of entities contained in the scope.
    * @param children The scope to use for all children.
@@ -83,11 +92,10 @@ object Scope {
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     children: Scope[_ <: AnyRef]
-  ): Scope[T] =
-    Scope(Select.All -> children)
+  ): Nested[T] = apply(DefaultIndexed, DefaultGenerators, children)
 
   /**
-   * Creates a scope with the specified child scopes
+   * Creates an indexed scope with the specified child scopes.
    *
    * @tparam T The type of entities contained in the scope.
    * @param children The scopes to selectively use for children.
@@ -95,36 +103,276 @@ object Scope {
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     children: (Select, Scope[_ <: AnyRef])*
-  ): Scope[T] =
-    Scope(Vector.empty, children.toVector, indexed = true)
+  ): Nested[T] = apply(DefaultIndexed, DefaultGenerators, children.toVector: _*)
 
   /**
-   * Creates a scope with stylesheets and all children using the specified child scope.
+   * Creates a possibly indexed scope with all children using the specified child scope.
+   *
+   * @tparam T The type of entities contained in the scope.
+   * @param indexed  True if the scope's contents are indexed.
+   * @param children The scope to use for all children.
+   * @return A new scope.
+   */
+  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+    indexed: Boolean,
+    children: Scope[_ <: AnyRef]
+  ): Nested[T] = apply(indexed, DefaultGenerators, children)
+
+  /**
+   * Creates a possibly indexed scope with the specified child scopes.
+   *
+   * @tparam T The type of entities contained in the scope.
+   * @param indexed  True if the scope's contents are indexed.
+   * @param children The scopes to selectively use for children.
+   * @return A new scope.
+   */
+  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+    indexed: Boolean,
+    children: (Select, Scope[_ <: AnyRef])*
+  ): Nested[T] = apply(indexed, DefaultGenerators, children.toVector: _*)
+
+  /**
+   * Creates an indexed scope with asset generators and all children using the specified child scope.
    *
    * @tparam T The type of entities contained in the scope.
    * @param generators The asset generators for the scope.
-   * @param children    The scope to use for all children.
+   * @param children   The scope to use for all children.
    * @return A new scope.
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     generators: Vector[Generator],
     children: Scope[_ <: AnyRef]
-  ): Scope[T] =
-    Scope(generators, Select.All -> children)
+  ): Nested[T] = apply(DefaultIndexed, generators, children)
 
   /**
-   * Creates a scope with stylesheets and the specified child scopes.
+   * Creates an indexed scope with asset generators and the specified child scopes.
    *
    * @tparam T The type of entities contained in the scope.
    * @param generators The asset generators for the scope.
-   * @param children    The scopes to selectively use for children.
+   * @param children   The scopes to selectively use for children.
    * @return A new scope.
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     generators: Vector[Generator],
     children: (Select, Scope[_ <: AnyRef])*
-  ): Scope[T] =
-    Scope(generators, children.toVector, indexed = true)
+  ): Nested[T] = apply(DefaultIndexed, generators, children.toVector: _*)
+
+  /**
+   * Creates a scope with asset generators and all children using the specified child scope.
+   *
+   * @tparam T The type of entities contained in the scope.
+   * @param indexed    True if the scope's contents are indexed.
+   * @param generators The asset generators for the scope.
+   * @param children   The scope to use for all children.
+   * @return A new scope.
+   */
+  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+    indexed: Boolean,
+    generators: Vector[Generator],
+    children: Scope[_ <: AnyRef]
+  ): Nested[T] = apply(indexed, generators, Select.All -> children)
+
+  /**
+   * Creates a scope with asset generators and the specified child scopes.
+   *
+   * @tparam T The type of entities contained in the scope.
+   * @param indexed    True if the scope's contents are indexed.
+   * @param generators The asset generators for the scope.
+   * @param children   The scopes to selectively use for children.
+   * @return A new scope.
+   */
+  def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+    indexed: Boolean,
+    generators: Vector[Generator],
+    children: (Select, Scope[_ <: AnyRef])*
+  ): Nested[T] = Nested(indexed, generators, children.toVector)
+
+  /**
+   * The base class for scope implementations.
+   *
+   * @tparam T The type of entity contained in this scope.
+   */
+  sealed abstract class Base[T <: AnyRef : ClassTag : Decoder : Publisher] extends Scope[T] {
+
+    /* Return the class tag. */
+    final override def classTag: ClassTag[T] = implicitly[ClassTag[T]]
+
+    /* Return the decoder. */
+    final override def decoder: Decoder[T] = implicitly[Decoder[T]]
+
+    /* Return the publisher. */
+    final override def publisher: Publisher[T] = implicitly[Publisher[T]]
+
+  }
+
+  /**
+   * A scope nested within another scope.
+   *
+   * @tparam T The type of entity contained in this scope.
+   * @param indexed    True if the scope's contents are indexed.
+   * @param generators The asset generators for the scope.
+   * @param children   The scopes to selectively use for children.
+   */
+  case class Nested[T <: AnyRef : ClassTag : Decoder : Publisher](
+    indexed: Boolean,
+    generators: Vector[Generator],
+    children: Vector[(Select, Scope[_ <: AnyRef])]
+  ) extends Base[T] {
+
+    /* Extend this type by dropping the generators. */
+    override def extended: Nested[T] =
+      if (generators.isEmpty) this else copy(generators = Vector.empty)
+
+  }
+
+  /**
+   * A scope nested within another scope.
+   *
+   * @tparam T The type of entity contained in this scope.
+   * @param path       The path that this scope is found at.
+   * @param indexed    True if the scope's contents are indexed.
+   * @param generators The asset generators for the scope.
+   * @param children   The scopes to selectively use for children.
+   */
+  case class Aliased[T <: AnyRef : ClassTag : Decoder : Publisher](
+    path: Path,
+    indexed: Boolean,
+    generators: Vector[Generator],
+    children: Vector[(Select, Scope[_ <: AnyRef])]
+  ) extends Base[T] {
+
+    /* Extend this type by converting to a nested scope. */
+    override def extended: Nested[T] =
+      Nested(indexed, Vector.empty, children)
+
+  }
+
+  /**
+   * Factory for aliased scopes.
+   */
+  object Aliased {
+
+    /**
+     * Creates an indexed scope with all children using the specified child scope.
+     *
+     * @tparam T The type of entities contained in the scope.
+     * @param path     The path that provides the resources for this scope.
+     * @param children The scope to use for all children.
+     * @return A new scope.
+     */
+    def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+      path: Path,
+      children: Scope[_ <: AnyRef]
+    ): Aliased[T] = apply(path, Select.All -> children)
+
+    /**
+     * Creates an indexed scope with the specified child scopes.
+     *
+     * @tparam T The type of entities contained in the scope.
+     * @param path     The path that provides the resources for this scope.
+     * @param children The scopes to selectively use for children.
+     * @return A new scope.
+     */
+    def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+      path: Path,
+      children: (Select, Scope[_ <: AnyRef])*
+    ): Aliased[T] = Aliased(path, DefaultIndexed, DefaultGenerators, children.toVector)
+
+    /**
+     * Creates a possibly indexed scope with all children using the specified child scope.
+     *
+     * @tparam T The type of entities contained in the scope.
+     * @param path     The path that provides the resources for this scope.
+     * @param indexed  True if the scope's contents are indexed.
+     * @param children The scope to use for all children.
+     * @return A new scope.
+     */
+    def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+      path: Path,
+      indexed: Boolean,
+      children: Scope[_ <: AnyRef]
+    ): Aliased[T] = apply(path, indexed, Select.All -> children)
+
+    /**
+     * Creates a possibly indexed scope with the specified child scopes.
+     *
+     * @tparam T The type of entities contained in the scope.
+     * @param path     The path that provides the resources for this scope.
+     * @param indexed  True if the scope's contents are indexed.
+     * @param children The scopes to selectively use for children.
+     * @return A new scope.
+     */
+    def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+      path: Path,
+      indexed: Boolean,
+      children: (Select, Scope[_ <: AnyRef])*
+    ): Aliased[T] = Aliased(path, indexed, DefaultGenerators, children.toVector)
+
+    /**
+     * Creates an indexed scope with asset generators and all children using the specified child scope.
+     *
+     * @tparam T The type of entities contained in the scope.
+     * @param path       The path that provides the resources for this scope.
+     * @param generators The asset generators for the scope.
+     * @param children   The scope to use for all children.
+     * @return A new scope.
+     */
+    def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+      path: Path,
+      generators: Vector[Generator],
+      children: Scope[_ <: AnyRef]
+    ): Aliased[T] = apply(path, generators, Select.All -> children)
+
+    /**
+     * Creates an indexed scope with asset generators and the specified child scopes.
+     *
+     * @tparam T The type of entities contained in the scope.
+     * @param path       The path that provides the resources for this scope.
+     * @param generators The asset generators for the scope.
+     * @param children   The scopes to selectively use for children.
+     * @return A new scope.
+     */
+    def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+      path: Path,
+      generators: Vector[Generator],
+      children: (Select, Scope[_ <: AnyRef])*
+    ): Aliased[T] = Aliased(path, DefaultIndexed, generators, children.toVector)
+
+    /**
+     * Creates a scope with asset generators and all children using the specified child scope.
+     *
+     * @tparam T The type of entities contained in the scope.
+     * @param path       The path that provides the resources for this scope.
+     * @param indexed    True if the scope's contents are indexed.
+     * @param generators The asset generators for the scope.
+     * @param children   The scope to use for all children.
+     * @return A new scope.
+     */
+    def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+      path: Path,
+      indexed: Boolean,
+      generators: Vector[Generator],
+      children: Scope[_ <: AnyRef]
+    ): Aliased[T] = apply(path, indexed, generators, Select.All -> children)
+
+    /**
+     * Creates a scope with asset generators and the specified child scopes.
+     *
+     * @tparam T The type of entities contained in the scope.
+     * @param path       The path that provides the resources for this scope.
+     * @param indexed    True if the scope's contents are indexed.
+     * @param generators The asset generators for the scope.
+     * @param children   The scopes to selectively use for children.
+     * @return A new scope.
+     */
+    def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
+      path: Path,
+      indexed: Boolean,
+      generators: Vector[Generator],
+      children: (Select, Scope[_ <: AnyRef])*
+    ): Aliased[T] = Aliased(path, indexed, generators, children.toVector)
+
+  }
 
   /**
    * Base type for scope selectors.

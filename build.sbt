@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.1.34",
+  version := "0.2.0",
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
   libraryDependencies += ScalaTest % Test
 )
@@ -15,18 +15,23 @@ lazy val api = (project in file("api")).
     libraryDependencies += CatsEffect
   )
 
-lazy val ui = (project in file("ui")).
-  settings(
-    common,
-    name := "oversite-ui"
-  ).dependsOn(api)
-
 lazy val model = (project in file("model")).
   settings(
     common,
     name := "oversite-model",
     libraryDependencies += LaikaCore
   ).dependsOn(api)
+
+lazy val ui = (project in file("ui")).
+  settings(
+    common,
+    name := "oversite-ui",
+    libraryDependencies ++= Seq(
+      ScalaTags,
+      ScalaCss
+    )
+  ).dependsOn(api)
+
 /*
 lazy val generator = (project in file("generator")).
   settings(

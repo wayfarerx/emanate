@@ -45,10 +45,7 @@ trait Site[T <: AnyRef] extends (Location => Scope[_ <: AnyRef]) {
 
     @annotation.tailrec
     def search(scope: Scope[_ <: AnyRef], remaining: Vector[Name]): Scope[_ <: AnyRef] = remaining match {
-      case head +: tail => scope.search(head) match {
-        case Some(child) => search(child, tail)
-        case None => scope.extended
-      }
+      case head +: tail => search(scope.find(head) getOrElse scope.extended, tail)
       case _ => scope
     }
 

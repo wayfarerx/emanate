@@ -57,7 +57,7 @@ sealed trait Scope[T <: AnyRef] {
    * @return The scope for the specified child of this scope.
    */
   final def apply(name: Name): Scope[_ <: AnyRef] =
-    search(name) getOrElse extended
+    find(name) getOrElse extended
 
   /**
    * Returns the specified child of this scope if one exists.
@@ -65,7 +65,7 @@ sealed trait Scope[T <: AnyRef] {
    * @param name The name that identifies the child scope.
    * @return The specified child of this scope if one exists.
    */
-  final def search(name: Name): Option[Scope[_ <: AnyRef]] = children collectFirst {
+  final def find(name: Name): Option[Scope[_ <: AnyRef]] = children collectFirst {
     case (Scope.Select.Matching(n), child) if n == name => child
     case (Scope.Select.All, child) => child
   }

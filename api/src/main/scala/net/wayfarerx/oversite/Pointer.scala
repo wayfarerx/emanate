@@ -173,12 +173,12 @@ object Pointer {
    * @tparam T The type of data that is pointed to.
    * @param tpe   The type of data that is pointed to.
    * @param scope The scope of this pointer.
-   * @param query The query to search with.
+   * @param name The name to search with.
    */
   case class Search[T <: Pointer.Type](
     tpe: T,
     scope: Prefix,
-    query: Name
+    name: Name
   ) extends Internal[T] {
 
     /* Return a new copy. */
@@ -205,7 +205,7 @@ object Pointer {
        * @tparam U The type to narrow to.
        * @return The narrowed entity pointer.
        */
-      def narrow[U <: T : ClassTag]: Search[Entity[U]] = Search(Entity[U], self.scope, self.query)
+      def narrow[U <: T : ClassTag]: Search[Entity[U]] = Search(Entity[U], self.scope, self.name)
 
     }
 

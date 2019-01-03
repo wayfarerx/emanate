@@ -20,6 +20,8 @@ package net.wayfarerx.oversite
 
 import cats.effect.IO
 
+import scala.reflect.ClassTag
+
 /**
  * Description of the context that a task operates in.
  */
@@ -66,6 +68,23 @@ trait Context {
    * @return The result of attempting to resolve the specified pointer.
    */
   def resolve[T <: Pointer.Asset](pointer: Pointer.External[T]): IO[Pointer.External[T]]
+
+  /**
+   * Searches for entity pointers that are assignable to the specified type.
+   *
+   * @tparam T The type of entity to search for.
+   * @return The entity pointers that are assignable to the specified type.
+   */
+  def search[T <: AnyRef : ClassTag](): IO[Vector[Pointer.Resolved[Pointer.Entity[T]]]]
+
+  /**
+   * Searches for entity pointers that are assignable to the specified type and satisfy the specified queries.
+   *
+   * @tparam T The type of entity to search for.
+   * @param query The query that entities must satisfy.
+   * @return The entity pointers that are assignable to the specified type and satisfy the specified queries.
+   */
+  def search[T <: AnyRef : ClassTag](query: Query[_ >: T]): IO[Vector[Pointer.Resolved[Pointer.Entity[T]]]]
 
   /**
    * Attempts to load the data associated with the specified entity.

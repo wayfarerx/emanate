@@ -311,6 +311,14 @@ object Pointer {
      */
     def typed: Option[(PrefixType, Asset)]
 
+    /**
+     * Converts this prefix into a location as seen from the specified location.
+     *
+     * @param from The location to resolve this prefix against.
+     * @return The location of this prefix if a valid one is found.
+     */
+    def toLocation(from: Location): Option[Location]
+
   }
 
   /**
@@ -367,6 +375,9 @@ object Pointer {
           case _ => None
         }
 
+      /* Resolve the path against the location. */
+      override def toLocation(from: Location): Option[Location] = from :++ path
+
       /* Return the path's string. */
       override def toString: String = path.toString
 
@@ -388,6 +399,9 @@ object Pointer {
           case init :+ Path.Child(n) => AssetsByPrefix.get(n) map (Absolute(Location.resolved(Path(init))) -> _)
           case _ => None
         }
+
+      /* Return the location. */
+      override def toLocation(from: Location): Option[Location] = Some(location)
 
       /* Return the location's string. */
       override def toString: String = location.toString

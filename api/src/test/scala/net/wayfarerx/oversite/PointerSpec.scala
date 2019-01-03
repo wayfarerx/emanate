@@ -27,7 +27,18 @@ class PointerSpec extends FlatSpec with Matchers {
 
   import Pointer.{EntityExtensions => _, _}
 
-  "Pointer" should "handle entity pointers correctly" in {
+  "Pointer" should "handle prefixes correctly" in {
+    Pointer.Prefix.Relative(Path("r")).toLocation(Location.empty) shouldBe
+      Some(Location.resolved(Path("r")))
+    Pointer.Prefix.Relative(Path("r")).toLocation(Location.resolved(Path("l"))) shouldBe
+      Some(Location.resolved(Path("l/r")))
+    Pointer.Prefix.Absolute(Location.resolved(Path("a"))).toLocation(Location.empty) shouldBe
+      Some(Location.resolved(Path("a")))
+    Pointer.Prefix.Absolute(Location.resolved(Path("a"))).toLocation(Location.resolved(Path("l"))) shouldBe
+      Some(Location.resolved(Path("a")))
+  }
+
+  it should "handle entity pointers correctly" in {
     val entity = Entity[String]
     val name = name"name"
     val relative = Prefix.Relative(Path("relative"))

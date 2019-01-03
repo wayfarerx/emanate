@@ -20,13 +20,14 @@ package net.wayfarerx.oversite
 package model
 
 import java.net.URL
+import java.util.concurrent.atomic.AtomicReference
 
 import language.existentials
 import util.control.NoStackTrace
-
 import io.{Codec, Source}
-
 import cats.effect.IO
+
+import scala.reflect.ClassTag
 
 /**
  * Base type for all nodes.
@@ -55,6 +56,9 @@ sealed trait Node[T <: AnyRef] extends Context {
 
   /** The cache ot alternate text for images. */
   private lazy val _altText = new AltText(location, resources)
+
+  /** The cache of the entity's relations. */
+  private val _relations = new AtomicReference(Map.empty: Map[Relation[T], Cached[Set[Node[_ <: AnyRef]]]])
 
   //
   // The API for all nodes.
@@ -89,6 +93,31 @@ sealed trait Node[T <: AnyRef] extends Context {
     _altText(path, file)
 
   /**
+   * Returns the nodes related to this node.
+   *
+   * @param relation The relation that identifies related nodes.
+   * @return The nodes related to this node.
+   */
+  final def relations(relation: Relation[T]): IO[Set[Node[_ <: AnyRef]]] = {
+
+    @annotation.tailrec
+    def lookup(): IO[Set[Node[_ <: AnyRef]]] = {
+      val map = _relations.get()
+      map get relation match {
+        case Some(cached) =>
+          cached()
+        case None =>
+          _relations.compareAndSet(map, map + (relation -> Cached {
+            entity map (relation(_).toVector) flatMap resolveAll map (_.toSet)
+          }))
+          lookup()
+      }
+    }
+
+    lookup()
+  }
+
+  /**
    * Returns true if this node generates the specified file.
    *
    * @param path The path to check for file generation in.
@@ -108,8 +137,32 @@ sealed trait Node[T <: AnyRef] extends Context {
         case _ => None
       }
       v <- Pointer.VariantsByExtension get e
-    } yield v.asset.prefix == p && scope.generators.exists { case Scope.Generator(nn, vv, _) => n == nn && v == vv }
+    } yield v.asset.prefix == p && scope.generators.exists {
+      case Scope.Generator(nn, vv, _) => n == nn && v == vv
+    }
   } getOrElse false
+
+  /**
+   * Resolves all the specified pointers into nodes.
+   *
+   * @param remaining The pointers to resolve.
+   * @return The resolved nodes.
+   */
+  final def resolveAll(remaining: Vector[Pointer[Pointer.Entity[_ <: AnyRef]]]): IO[Vector[Node[_ <: AnyRef]]] =
+    remaining match {
+      case head +: tail => for {
+        h <- resolve(head)
+        t <- resolveAll(tail)
+        r <- h match {
+          case Pointer.Target(_, prefix, _) =>
+            index map (i => prefix toLocation location flatMap (i(_)) map (_ +: t) getOrElse t)
+          case _ =>
+            sys.error("unreachable")
+        }
+      } yield r
+      case _ =>
+        IO.pure(Vector.empty)
+    }
 
   //
   // The context implementations for all nodes.
@@ -130,21 +183,25 @@ sealed trait Node[T <: AnyRef] extends Context {
   private def resolveInternal[P <: Pointer.Type](pointer: Pointer.Internal[P]): IO[Pointer.Resolved[P]] =
     pointer.tpe match {
       case e@Pointer.Entity(_) => pointer match {
-        case Pointer.Search(_, from, query) => searchForEntity(e, from, query) map { node =>
-          Pointer.Target(Pointer.Entity(node.scope.classTag.runtimeClass), Pointer.Prefix(location, node.location), ())
-            .asInstanceOf[Pointer.Resolved[P]]
+        case Pointer.Search(_, from, query) => searchForEntity(e, from, query) map {
+          node =>
+            Pointer.Target(Pointer.Entity(node.scope.classTag.runtimeClass), Pointer.Prefix(location, node.location), ())
+              .asInstanceOf[Pointer.Resolved[P]]
         }
-        case Pointer.Target(_, at, _) => targetEntity(e, at) map { node =>
-          Pointer.Target(Pointer.Entity(node.scope.classTag.runtimeClass), Pointer.Prefix(location, node.location), ())
-            .asInstanceOf[Pointer.Resolved[P]]
+        case Pointer.Target(_, at, _) => targetEntity(e, at) map {
+          node =>
+            Pointer.Target(Pointer.Entity(node.scope.classTag.runtimeClass), Pointer.Prefix(location, node.location), ())
+              .asInstanceOf[Pointer.Resolved[P]]
         }
       }
       case a: Pointer.Asset => pointer match {
-        case Pointer.Search(_, from, query) => searchForAsset(a, from, query) map { case (n, p, s) =>
-          Pointer.Target(a, Pointer.Prefix(location, n.location), p.toString + s).asInstanceOf[Pointer.Resolved[P]]
+        case Pointer.Search(_, from, query) => searchForAsset(a, from, query) map {
+          case (n, p, s) =>
+            Pointer.Target(a, Pointer.Prefix(location, n.location), p.toString + s).asInstanceOf[Pointer.Resolved[P]]
         }
-        case Pointer.Target(_, prefix, suffix) => targetAsset(prefix, suffix.toString) map { case (n, p, s) =>
-          Pointer.Target(a, Pointer.Prefix(location, n.location), p.toString + s).asInstanceOf[Pointer.Resolved[P]]
+        case Pointer.Target(_, prefix, suffix) => targetAsset(prefix, suffix.toString) map {
+          case (n, p, s) =>
+            Pointer.Target(a, Pointer.Prefix(location, n.location), p.toString + s).asInstanceOf[Pointer.Resolved[P]]
         }
       }
     }
@@ -152,6 +209,59 @@ sealed trait Node[T <: AnyRef] extends Context {
   /* Resolve external pointers. */
   final override def resolve[P <: Pointer.Asset](pointer: Pointer.External[P]): IO[Pointer.External[P]] =
     IO.pure(pointer)
+
+  /* Search for entities. */
+  final override def search[E <: AnyRef : ClassTag](): IO[Vector[Pointer.Resolved[Pointer.Entity[E]]]] =
+    index flatMap (_.apply[E](location, _ => IO.pure(true))) map (_ map { node =>
+      Pointer.Target(Pointer.Entity[E], Pointer.Prefix(location, node.location), ())
+    })
+
+  /* Search for entities. */
+  final override def search[E <: AnyRef : ClassTag](
+    query: Query[_ >: E]
+  ): IO[Vector[Pointer.Resolved[Pointer.Entity[E]]]] = {
+
+    def queryToFunction(query: Query[_ >: E]): Node[_ <: E] => IO[Boolean] = query match {
+      case Query.Related(relation, pointers) =>
+        node =>
+          for {
+            r <- node.relations(relation)
+            q <- resolveAll(pointers)
+          } yield q map (_.location) exists (r map (_.location))
+      case Query.Not(subquery) =>
+        val s = queryToFunction(subquery)
+        node =>
+          for (ss <- s(node)) yield !ss
+      case Query.And(first, second) =>
+        val f = queryToFunction(first)
+        val s = queryToFunction(second)
+        node =>
+          for {
+            ff <- f(node)
+            ss <- s(node)
+          } yield ff && ss
+      case Query.Or(first, second) =>
+        val f = queryToFunction(first)
+        val s = queryToFunction(second)
+        node =>
+          for {
+            ff <- f(node)
+            ss <- s(node)
+          } yield ff || ss
+      case Query.Xor(first, second) =>
+        val f = queryToFunction(first)
+        val s = queryToFunction(second)
+        node =>
+          for {
+            ff <- f(node)
+            ss <- s(node)
+          } yield ff ^ ss
+    }
+
+    index flatMap (_.apply[E](location, queryToFunction(query))) map (_ map { node =>
+      Pointer.Target(Pointer.Entity[E], Pointer.Prefix(location, node.location), ())
+    })
+  }
 
   /* Load the specified entity. */
   final override def load[E <: AnyRef](pointer: Pointer[Pointer.Entity[E]]): IO[E] = pointer match {
@@ -169,7 +279,9 @@ sealed trait Node[T <: AnyRef] extends Context {
       searchForAsset(image.tpe, from, query)
     case Pointer.Target(_, at, file) =>
       targetAsset(at, file.toString)
-  }) flatMap { case (node, path, file) => node.altText(path, file) }
+  }) flatMap {
+    case (node, path, file) => node.altText(path, file)
+  }
 
   //
   // Helper methods.
@@ -188,7 +300,9 @@ sealed trait Node[T <: AnyRef] extends Context {
   ): IO[Node[_ <: AnyRef]] =
     locate(at) map (l => index map (i => selectEntity(entity, i(l).toSeq))) getOrElse IO.pure(None) flatMap {
       case Some(r) => IO.pure(r)
-      case None => Problem.raise(s"Entity ${entity.classInfo.getSimpleName} not found at $at")
+      case None => Problem.raise(s"Entity ${
+        entity.classInfo.getSimpleName
+      } not found at $at")
     }
 
   /**
@@ -203,11 +317,14 @@ sealed trait Node[T <: AnyRef] extends Context {
     from: Pointer.Prefix,
     query: Name
   ): IO[Node[_ <: AnyRef]] =
-    targetEntity(Pointer.Entity[AnyRef], from) flatMap { node =>
-      index map (idx => selectEntity(entity, idx(query, node.location))) flatMap {
-        case Some(r) => IO.pure(r)
-        case None => Problem.raise(s"Entity ${entity.classInfo.getSimpleName} not found at $from$query")
-      }
+    targetEntity(Pointer.Entity[AnyRef], from) flatMap {
+      node =>
+        index map (idx => selectEntity(entity, idx(node.location, query))) flatMap {
+          case Some(r) => IO.pure(r)
+          case None => Problem.raise(s"Entity ${
+            entity.classInfo.getSimpleName
+          } not found at $from$query")
+        }
     }
 
   /**
@@ -234,12 +351,15 @@ sealed trait Node[T <: AnyRef] extends Context {
     prefix: Pointer.Prefix,
     suffix: String
   ): IO[(Node[_ <: AnyRef], Path, String)] =
-    canonicalAsset(prefix, suffix) flatMap { case (node, path, file) =>
-      if (node.generates(path, file)) IO.pure((node, path, file))
-      else resources find node.source.toString + path + file flatMap {
-        _ map (_ => IO.pure((node, path, file))) getOrElse[IO[(Node[_ <: AnyRef], Path, String)]]
-          Problem.raise(s"Cannot find asset ${node.location}$path$file")
-      }
+    canonicalAsset(prefix, suffix) flatMap {
+      case (node, path, file) =>
+        if (node.generates(path, file)) IO.pure((node, path, file))
+        else resources find node.source.toString + path + file flatMap {
+          _ map (_ => IO.pure((node, path, file))) getOrElse[IO[(Node[_ <: AnyRef], Path, String)]]
+            Problem.raise(s"Cannot find asset ${
+              node.location
+            }$path$file")
+        }
     }
 
   /**
@@ -256,35 +376,38 @@ sealed trait Node[T <: AnyRef] extends Context {
     query: Name
   ): IO[(Node[_ <: AnyRef], Path, String)] = {
     canonicalAsset(from, Path.Regular(asset.prefix map (p => s"$p/$query") getOrElse query.normal))
-      .flatMap { case (start, path, _) =>
+      .flatMap {
+        case (start, path, _) =>
 
-        /* Find from the specified extensions. */
-        def finding(node: Node[_ <: AnyRef], remaining: Vector[Name]): IO[Option[String]] = remaining match {
-          case head +: tail =>
-            val file = s"$query.$head"
-            if (node.generates(path, file)) IO.pure(Some(file))
-            else resources find node.source.toString + path + file flatMap {
-              _ map (_ => IO.pure(Some(file))) getOrElse finding(node, tail)
-            }
-          case _ => IO.pure(None)
-        }
-
-        /* Search the specified node and all of its parents. */
-        def searching(node: Node[_ <: AnyRef]): IO[Option[(Node[_ <: AnyRef], Path, String)]] =
-          finding(node, asset.variants.flatMap(_.extensions).toVector) flatMap {
-            case Some(file) =>
-              IO.pure(Some((node, path, file)))
-            case None =>
-              node match {
-                case child: Node.Child[_] => searching(child.parent)
-                case _ => IO.pure(None)
+          /* Find from the specified extensions. */
+          def finding(node: Node[_ <: AnyRef], remaining: Vector[Name]): IO[Option[String]] = remaining match {
+            case head +: tail =>
+              val file = s"$query.$head"
+              if (node.generates(path, file)) IO.pure(Some(file))
+              else resources find node.source.toString + path + file flatMap {
+                _ map (_ => IO.pure(Some(file))) getOrElse finding(node, tail)
               }
+            case _ => IO.pure(None)
           }
 
-        searching(start) flatMap {
-          case Some(result) => IO.pure(result)
-          case None => Problem.raise(s"Cannot find ${asset.name} asset $from?$query")
-        }
+          /* Search the specified node and all of its parents. */
+          def searching(node: Node[_ <: AnyRef]): IO[Option[(Node[_ <: AnyRef], Path, String)]] =
+            finding(node, asset.variants.flatMap(_.extensions).toVector) flatMap {
+              case Some(file) =>
+                IO.pure(Some((node, path, file)))
+              case None =>
+                node match {
+                  case child: Node.Child[_] => searching(child.parent)
+                  case _ => IO.pure(None)
+                }
+            }
+
+          searching(start) flatMap {
+            case Some(result) => IO.pure(result)
+            case None => Problem.raise(s"Cannot find ${
+              asset.name
+            } asset $from?$query")
+          }
       }
   }
 
@@ -304,16 +427,19 @@ sealed trait Node[T <: AnyRef] extends Context {
       case None => contextualize(idx, at.parent.get, at.path.elements.last +: path)
     }
 
-    locate(prefix) flatMap { loc =>
-      suffix lastIndexOf '/' match {
-        case i if i >= 0 => loc :++ Path(suffix.substring(0, i)) map (_ -> suffix.substring(i + 1))
-        case _ => Some(loc -> suffix.string)
-      }
-    } map { case (at, file) =>
-      index map { idx =>
-        val (node, path) = contextualize(idx, at, Path.empty)
-        (node, path, file)
-      }
+    locate(prefix) flatMap {
+      loc =>
+        suffix lastIndexOf '/' match {
+          case i if i >= 0 => loc :++ Path(suffix.substring(0, i)) map (_ -> suffix.substring(i + 1))
+          case _ => Some(loc -> suffix.string)
+        }
+    } map {
+      case (at, file) =>
+        index map {
+          idx =>
+            val (node, path) = contextualize(idx, at, Path.empty)
+            (node, path, file)
+        }
     } getOrElse Problem.raise(s"Unable to contextualize asset $prefix$suffix")
   }
 

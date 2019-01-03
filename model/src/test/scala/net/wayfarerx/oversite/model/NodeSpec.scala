@@ -169,6 +169,50 @@ class NodeSpec extends FlatSpec with Matchers {
     site.test2.generates(Path("foo"), "bar.css") shouldBe false
   }
 
+  it should "search for entities" in {
+    site.root.search[Home]().unsafeRunSync() shouldBe
+      Vector(Pointer.Entity[Home].apply(Path.empty))
+    site.root.search[Test1]().unsafeRunSync() shouldBe
+      Vector(Pointer.Entity[Test1].apply(Path("test-1")), Pointer.Entity[Test1].apply(Path("test-1/nested")))
+    site.root.search[Test2]().unsafeRunSync() shouldBe
+      Vector(Pointer.Entity[Test2].apply(Path("test-2")), Pointer.Entity[Test2].apply(Path("test-2/deep")))
+    site.root.search[Test2Nested]().unsafeRunSync() shouldBe
+      Vector(Pointer.Entity[Test2Nested].apply(Path("test-2/nested")))
+    site.root.search[Aliased]().unsafeRunSync() shouldBe
+      Vector(Pointer.Entity[Aliased].apply(Path("aliased")))
+    val all = site.root.search[Model]().unsafeRunSync()
+    all.length shouldBe 7
+    all.head shouldBe Pointer.Entity[Model].apply(Path.empty)
+    all.slice(1, 4) sortBy (_.href) shouldBe Vector(
+      Pointer.Entity[Model].apply(Path("aliased")),
+      Pointer.Entity[Model].apply(Path("test-1")),
+      Pointer.Entity[Model].apply(Path("test-2"))
+    )
+    all.slice(4, 7) sortBy (_.href) shouldBe Vector(
+      Pointer.Entity[Model].apply(Path("test-1/nested")),
+      Pointer.Entity[Model].apply(Path("test-2/deep")),
+      Pointer.Entity[Model].apply(Path("test-2/nested"))
+    )
+  }
+
+  it should "search for entities by their relations" in {
+    val test1 = Query[Home](Home.tests, Pointer.Entity[Test1].apply(Path("test-1")))
+    val test2 = Query[Home](Home.tests, Pointer.Entity[Test2].apply(Path("test-2")))
+    val aliased = Query[Home](Home.tests, Pointer.Entity[Aliased].apply(Path("aliased")))
+    site.root.search(test1).unsafeRunSync() shouldBe Vector(Pointer.Entity[Home].apply(Path.empty))
+    site.root.search(test2).unsafeRunSync() shouldBe Vector(Pointer.Entity[Home].apply(Path.empty))
+    site.root.search(aliased).unsafeRunSync() shouldBe Vector.empty
+    site.root.search(!test1).unsafeRunSync() shouldBe Vector.empty
+    site.root.search(!test2).unsafeRunSync() shouldBe Vector.empty
+    site.root.search(!aliased).unsafeRunSync() shouldBe Vector(Pointer.Entity[Home].apply(Path.empty))
+    site.root.search(test1 & test2).unsafeRunSync() shouldBe Vector(Pointer.Entity[Home].apply(Path.empty))
+    site.root.search(test1 & aliased).unsafeRunSync() shouldBe Vector.empty
+    site.root.search(test1 | test2).unsafeRunSync() shouldBe Vector(Pointer.Entity[Home].apply(Path.empty))
+    site.root.search(test1 | aliased).unsafeRunSync() shouldBe Vector(Pointer.Entity[Home].apply(Path.empty))
+    site.root.search(test1 ^ test2).unsafeRunSync() shouldBe Vector.empty
+    site.root.search(test1 ^ aliased).unsafeRunSync() shouldBe Vector(Pointer.Entity[Home].apply(Path.empty))
+  }
+
   it should "load entities" in {
     site.root.load(Pointer.Entity[Home].apply(Location.empty)).unsafeRunSync() shouldBe Home(
       name"Root Document",
@@ -263,7 +307,14 @@ object NodeSpec {
 
   /** Provides the decoder for home entities. */
   object Home {
+
     implicit val decoder: Decoder[Home] = Model.decoder { case (n, a, d) => Home(n, a, d) }
+
+    val tests: Relation[Home] = Relation(_ => Set(
+      Pointer.Entity[Model].apply(Path("test-1")),
+      Pointer.Entity[Model].apply(Path("test-2"))
+    ))
+
   }
 
   /** The test-1 entity. */

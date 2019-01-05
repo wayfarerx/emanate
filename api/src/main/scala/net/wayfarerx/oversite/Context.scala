@@ -1,7 +1,7 @@
 /*
  * Context.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,6 +101,6 @@ trait Context {
    * @param pointer The internal pointer to the image to load the alt-text for.
    * @return The result of attempting to load the alt-text for a specific image.
    */
-  def alt(pointer: Pointer.Internal[Pointer.Image]): IO[Option[String]]
+  def alt(pointer: Pointer[Pointer.Image]): IO[Option[String]]
 
 }

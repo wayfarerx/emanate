@@ -1,7 +1,7 @@
 /*
  * Node.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -185,13 +185,19 @@ sealed trait Node[T <: AnyRef] extends Context {
       case e@Pointer.Entity(_) => pointer match {
         case Pointer.Search(_, from, query) => searchForEntity(e, from, query) map {
           node =>
-            Pointer.Target(Pointer.Entity(node.scope.classTag.runtimeClass), Pointer.Prefix(location, node.location), ())
-              .asInstanceOf[Pointer.Resolved[P]]
+            Pointer.Target(
+              Pointer.Entity(node.scope.classTag.runtimeClass),
+              Pointer.Prefix(location, node.location),
+              ()
+            ).asInstanceOf[Pointer.Resolved[P]]
         }
         case Pointer.Target(_, at, _) => targetEntity(e, at) map {
           node =>
-            Pointer.Target(Pointer.Entity(node.scope.classTag.runtimeClass), Pointer.Prefix(location, node.location), ())
-              .asInstanceOf[Pointer.Resolved[P]]
+            Pointer.Target(
+              Pointer.Entity(node.scope.classTag.runtimeClass),
+              Pointer.Prefix(location, node.location),
+              ()
+            ).asInstanceOf[Pointer.Resolved[P]]
         }
       }
       case a: Pointer.Asset => pointer match {
@@ -274,14 +280,16 @@ sealed trait Node[T <: AnyRef] extends Context {
   }
 
   /* Attempt to load the alt text for an image. */
-  final override def alt(image: Pointer.Internal[Pointer.Image]): IO[Option[String]] = (image match {
+  final override def alt(image: Pointer[Pointer.Image]): IO[Option[String]] = (image match {
     case Pointer.Search(_, from, query) =>
-      searchForAsset(image.tpe, from, query)
+      searchForAsset(image.tpe, from, query) map (Some(_))
     case Pointer.Target(_, at, file) =>
-      targetAsset(at, file.toString)
-  }) flatMap {
+      targetAsset(at, file.toString) map (Some(_))
+    case _ =>
+      IO.pure(None)
+  }) flatMap (_ map {
     case (node, path, file) => node.altText(path, file)
-  }
+  } getOrElse IO.pure(None))
 
   //
   // Helper methods.
@@ -392,7 +400,7 @@ sealed trait Node[T <: AnyRef] extends Context {
 
           /* Search the specified node and all of its parents. */
           def searching(node: Node[_ <: AnyRef]): IO[Option[(Node[_ <: AnyRef], Path, String)]] =
-            finding(node, asset.variants.flatMap(_.extensions).toVector) flatMap {
+            finding(node, asset.variants.toList.flatMap(_.extensions).toVector) flatMap {
               case Some(file) =>
                 IO.pure(Some((node, path, file)))
               case None =>

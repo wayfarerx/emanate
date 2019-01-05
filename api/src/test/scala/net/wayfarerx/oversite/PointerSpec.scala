@@ -1,7 +1,7 @@
 /*
  * PointerSpec.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ class PointerSpec extends FlatSpec with Matchers {
   }
 
   it should "handle asset pointers correctly" in {
-    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.variants.toSeq map (a -> _)) foreach {
+    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.variants.toList map (a -> _)) foreach {
       case (asset, extension) =>
         val name = name"name"
         val relative = Prefix.Relative(Path("relative"))
@@ -130,7 +130,7 @@ class PointerSpec extends FlatSpec with Matchers {
     Pointer.parse("/name/") shouldBe Target(Entity[AnyRef], Prefix.Absolute(Location.resolved(Path(name))), ())
     Pointer.parse("at/name/") shouldBe Target(Entity[AnyRef], Prefix.Relative(path :+ name), ())
     Pointer.parse("/at/name/") shouldBe Target(Entity[AnyRef], Prefix.Absolute(location :+ name), ())
-    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.variants.toSeq map (a -> _)) foreach {
+    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.variants.toList map (a -> _)) foreach {
       case (asset, variant) =>
         asset.prefix foreach { p =>
           Pointer.parse(s"$p/") shouldBe Search(asset, Prefix.empty, asset.name)

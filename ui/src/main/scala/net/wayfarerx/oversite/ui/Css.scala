@@ -1,7 +1,7 @@
 /*
  * Css.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,10 @@ package ui
 
 import cats.effect.IO
 
-import scalacss.StyleSheet.{Inline => StyleSheet}
-
 /**
  * Base type for custom CSS files.
  */
-trait Css extends StyleSheet
+trait Css extends scalacss.StyleSheet.Inline
 
 /**
  * Factory for CSS generators.
@@ -40,7 +38,7 @@ object Css {
    * @param css  The content of the generated CSS file.
    * @return A named generator for the CSS file.
    */
-  def apply(name: Name, css: StyleSheet): Scope.Generator = create(name, _ => css)
+  def apply(name: Name, css: Css): Scope.Generator = create(name, _ => css)
 
   /**
    * Creates a named generator for a contextual CSS file.
@@ -49,7 +47,7 @@ object Css {
    * @param css  The contextual content of the generated CSS file.
    * @return A named generator for the contextual CSS file.
    */
-  def apply(name: Name)(css: Context => StyleSheet): Scope.Generator = create(name, css)
+  def apply(name: Name)(css: Context => Css): Scope.Generator = create(name, css)
 
   /**
    * Creates a named generator for a contextual CSS file.
@@ -58,10 +56,10 @@ object Css {
    * @param css  The contextual content of the generated CSS file.
    * @return A named generator for the contextual CSS file.
    */
-  final private def create(name: Name, css: Context => StyleSheet): Scope.Generator = {
+  final private def create(name: Name, css: Context => Css): Scope.Generator = {
     val settings = scalacss.devOrProdDefaults
     import settings._
-    Scope.Generator(name, Pointer.Stylesheet.css, c => IO(css(c).render[String] getBytes "UTF-8"))
+    Scope.Generator(name, Pointer.Stylesheet.css, ctx => IO(css(ctx).render[String] getBytes "UTF-8"))
   }
 
 }

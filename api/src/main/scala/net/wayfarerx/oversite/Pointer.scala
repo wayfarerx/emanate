@@ -1,7 +1,7 @@
 /*
  * Pointer.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
  */
 
 package net.wayfarerx.oversite
+
+import cats.data.NonEmptyList
 
 import collection.immutable.ListSet
 import reflect.ClassTag
@@ -60,7 +62,7 @@ object Pointer {
 
   /** The index of asset variants by extension. */
   lazy val VariantsByExtension: Map[Name, Asset#Variant] = {
-    Assets.flatMap(a => a.variants.toVector flatMap (v => v.extensions map (_ -> v))).toMap
+    Assets.flatMap(a => a.variants.toList flatMap (v => v.extensions map (_ -> v))).toMap
   }
 
   /**
@@ -111,7 +113,7 @@ object Pointer {
   sealed trait Internal[+T <: Pointer.Type] extends Pointer[T] {
 
     /** The prefix of this pointer. */
-    def scope: Prefix
+    def prefix: Prefix
 
     /**
      * Returns a copy of this pointer with the specified prefix.
@@ -171,18 +173,18 @@ object Pointer {
    * A pointer that searches for an internal target.
    *
    * @tparam T The type of data that is pointed to.
-   * @param tpe   The type of data that is pointed to.
-   * @param scope The scope of this pointer.
-   * @param name The name to search with.
+   * @param tpe    The type of data that is pointed to.
+   * @param prefix The scope of this pointer.
+   * @param name   The name to search with.
    */
   case class Search[T <: Pointer.Type](
     tpe: T,
-    scope: Prefix,
+    prefix: Prefix,
     name: Name
   ) extends Internal[T] {
 
     /* Return a new copy. */
-    override def withPrefix(prefix: Prefix): Search[T] = copy(scope = prefix)
+    override def withPrefix(prefix: Prefix): Search[T] = copy(prefix = prefix)
 
   }
 
@@ -205,7 +207,7 @@ object Pointer {
        * @tparam U The type to narrow to.
        * @return The narrowed entity pointer.
        */
-      def narrow[U <: T : ClassTag]: Search[Entity[U]] = Search(Entity[U], self.scope, self.name)
+      def narrow[U <: T : ClassTag]: Search[Entity[U]] = Search(Entity[U], self.prefix, self.name)
 
     }
 
@@ -229,20 +231,20 @@ object Pointer {
    * @tparam T The type of data that is pointed to.
    * @tparam S The type of suffix used.
    * @param tpe    The type of data that is pointed to.
-   * @param scope  The prefix of this pointer.
+   * @param prefix The prefix of this pointer.
    * @param suffix The suffix of this pointer.
    */
   case class Target[T <: Pointer.Type.Aux[S], S](
     tpe: T,
-    scope: Prefix,
+    prefix: Prefix,
     suffix: S
   ) extends Internal[T] with Resolved[T] {
 
     /* Return a new copy. */
-    override def withPrefix(prefix: Prefix): Target[T, S] = copy(scope = prefix)
+    override def withPrefix(prefix: Prefix): Target[T, S] = copy(prefix = prefix)
 
     /* Use the type to construct the hypertext reference. */
-    override def href: String = tpe.href(scope, suffix)
+    override def href: String = tpe.href(prefix, suffix)
 
   }
 
@@ -265,7 +267,7 @@ object Pointer {
        * @tparam U The type to narrow to.
        * @return The narrowed entity pointer.
        */
-      def narrow[U <: T : ClassTag]: Target[Entity[U], Unit] = Target(Entity[U], self.scope, ())
+      def narrow[U <: T : ClassTag]: Target[Entity[U], Unit] = Target(Entity[U], self.prefix, ())
 
     }
 
@@ -575,8 +577,11 @@ object Pointer {
     /** The default name of this type of asset. */
     def name: Name
 
+    /** The default extension of this type of asset. */
+    def extension: Name = variants.head.extensions.head
+
     /** The supported variants of this asset type. */
-    def variants: ListSet[Variant]
+    def variants: NonEmptyList[Variant]
 
     /**
      * Creates a pointer that searches the current location for an asset.
@@ -746,7 +751,7 @@ object Pointer {
     override val name: Name = name"page"
 
     /* The extensions to search for. */
-    override val variants: ListSet[Variant] = ListSet(html)
+    override val variants: NonEmptyList[Variant] = NonEmptyList.of(html)
 
   }
 
@@ -774,7 +779,7 @@ object Pointer {
     override val name: Name = name"image"
 
     /* The extensions to search for. */
-    override val variants: ListSet[Variant] = ListSet(gif, jpg, png)
+    override val variants: NonEmptyList[Variant] = NonEmptyList.of(gif, jpg, png)
 
   }
 
@@ -796,7 +801,7 @@ object Pointer {
     override val name: Name = name"stylesheet"
 
     /* The extensions to search for. */
-    override val variants: ListSet[Variant] = ListSet(css)
+    override val variants: NonEmptyList[Variant] = NonEmptyList.of(css)
 
   }
 
@@ -818,7 +823,7 @@ object Pointer {
     override val name: Name = name"script"
 
     /* The extensions to search for. */
-    override val variants: ListSet[Variant] = ListSet(js)
+    override val variants: NonEmptyList[Variant] = NonEmptyList.of(js)
 
   }
 

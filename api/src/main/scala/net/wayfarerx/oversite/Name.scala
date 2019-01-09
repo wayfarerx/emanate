@@ -1,7 +1,7 @@
 /*
  * Name.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
  */
 
 package net.wayfarerx.oversite
+
+import cats.kernel.Order
 
 /**
  * Represents a name with a normalized version of its display value.
@@ -57,6 +59,12 @@ final class Name private(val normal: String, val display: String) extends Produc
  * Factory for names.
  */
 object Name extends (String => Option[Name]) {
+
+  /** The ordering for names. */
+  implicit val order: Order[Name] = _.normal compareTo _.normal
+
+  /** The ordering for names. */
+  implicit val ordering: Ordering[Name] = order.compare
 
   /**
    * Attempts to create a name.

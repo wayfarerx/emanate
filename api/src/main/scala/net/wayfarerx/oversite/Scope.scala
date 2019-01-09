@@ -416,6 +416,6 @@ object Scope {
    * @param tpe      The type of the generated asset.
    * @param generate The function that generates the asset data.
    */
-  case class Generator(name: Name, tpe: Pointer.Asset#Variant, generate: Context => IO[Array[Byte]])
+  case class Generator(name: Name, tpe: Pointer.Asset.Variant, generate: Context => IO[Array[Byte]])
 
 }

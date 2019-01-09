@@ -18,10 +18,10 @@
 
 package net.wayfarerx.oversite
 
-import cats.data.NonEmptyList
-
-import collection.immutable.ListSet
+import collection.immutable.SortedSet
 import reflect.ClassTag
+
+import cats.data.{NonEmptyList, NonEmptySet}
 
 /**
  * Base type for all pointers.
@@ -61,9 +61,8 @@ object Pointer {
     Assets.flatMap(a => a.prefix.map(_ -> a)).toMap
 
   /** The index of asset variants by extension. */
-  lazy val VariantsByExtension: Map[Name, Asset#Variant] = {
-    Assets.flatMap(a => a.variants.toList flatMap (v => v.extensions map (_ -> v))).toMap
-  }
+  lazy val VariantsByExtension: Map[Name, Asset.Variant] =
+    Assets.flatMap(a => a.variants.toList flatMap (v => v.extensions.toSortedSet map (_ -> v))).toMap
 
   /**
    * Parses a pointer.
@@ -577,11 +576,8 @@ object Pointer {
     /** The default name of this type of asset. */
     def name: Name
 
-    /** The default extension of this type of asset. */
-    def extension: Name = variants.head.extensions.head
-
     /** The supported variants of this asset type. */
-    def variants: NonEmptyList[Variant]
+    def variants: NonEmptyList[Asset.Variant]
 
     /**
      * Creates a pointer that searches the current location for an asset.
@@ -680,33 +676,6 @@ object Pointer {
     final override def href(prefix: Prefix, suffix: SuffixType): String =
       prefix + suffix
 
-    /**
-     * A particular variant of the enclosing asset type.
-     *
-     * @param extensions The extensions for this variant.
-     */
-    case class Variant private(extensions: ListSet[Name]) {
-
-      /** Returns the asset this variant is bound to. */
-      def asset: Asset = self
-
-    }
-
-    /**
-     * Factory for asset variants.
-     */
-    object Variant {
-
-      /**
-       * Creates a new variant of the enclosing asset type.
-       *
-       * @param extensions The extensions for this variant.
-       * @return A new variant of the enclosing asset type.
-       */
-      def apply(extensions: String*): Variant = Variant(ListSet(extensions flatMap (e => Name(e.toLowerCase)): _*))
-
-    }
-
   }
 
   /**
@@ -720,7 +689,7 @@ object Pointer {
      * @param string The string to detect the asset type from.
      * @return The detected asset type.
      */
-    final private[Pointer] def detect(string: String): Option[Asset#Variant] = {
+    final private[Pointer] def detect(string: String): Option[Variant] = {
       val file = string lastIndexOf '/' match {
         case i if i >= 0 => string substring i + 1
         case _ => string
@@ -731,6 +700,63 @@ object Pointer {
       }) flatMap VariantsByExtension.get
     }
 
+    /**
+     * A particular variant of the enclosing asset type.
+     *
+     * @param asset      The asset this variant represents.
+     * @param extensions The extensions for this variant.
+     */
+    case class Variant (asset: Asset, extensions: NonEmptySet[Name])
+
+    /**
+     * Factory for asset variants.
+     */
+    object Variant {
+
+      /**
+       * Creates an asset variant with the specified settings.
+       *
+       * @param asset The asset that this variant represents.
+       * @param extension The default extension to use for the asset variant.
+       * @param extensions The other extensions to use for the asset variant.
+       * @return An asset variant with the specified settings.
+       */
+      def apply(asset: Asset, extension: Name, extensions: Name*): Variant =
+        Variant(asset, NonEmptySet(extension, SortedSet(extensions: _*)))
+
+      /**
+       * Creates an asset variant with the specified settings.
+       *
+       * @param asset The asset that this variant represents.
+       * @param extension The default extension to use for the asset variant.
+       * @param extensions The other extensions to use for the asset variant.
+       * @return An asset variant with the specified settings.
+       */
+      def of(asset: Asset, extension: Name, extensions: SortedSet[Name]): Variant =
+        apply(asset, extension, extensions.toSeq: _*)
+
+      /**
+       * Creates an asset variant with a single extension.
+       *
+       * @param asset The asset that this variant represents.
+       * @param extension The extension to use for the asset variant.
+       * @return An asset variant with a single extension.
+       */
+      def one(asset: Asset, extension: Name): Variant =
+        fromSet(asset, SortedSet(extension)).get
+
+      /**
+       * Attempts to crate an asset variant with the specified settings.
+       *
+       * @param asset The asset that this variant represents.
+       * @param extensions The extensions to use for the asset variant.
+       * @return An asset variant with the specified settings if one could be created.
+       */
+      def fromSet(asset: Asset, extensions: SortedSet[Name]): Option[Variant] =
+        NonEmptySet.fromSet(extensions) map (Variant(asset, _))
+
+    }
+
   }
 
   /**
@@ -739,7 +765,7 @@ object Pointer {
   case object Page extends Asset {
 
     /** HTML pages. */
-    val html: Variant = Variant("html")
+    val html: Asset.Variant = Asset.Variant.one(this, name"html")
 
     /* Define the asset type. */
     override type AssetType = Page
@@ -751,7 +777,7 @@ object Pointer {
     override val name: Name = name"page"
 
     /* The extensions to search for. */
-    override val variants: NonEmptyList[Variant] = NonEmptyList.of(html)
+    override val variants: NonEmptyList[Asset.Variant] = NonEmptyList.of(html)
 
   }
 
@@ -761,13 +787,13 @@ object Pointer {
   case object Image extends Asset {
 
     /** GIF images. */
-    val gif: Variant = Variant("gif")
+    val gif: Asset.Variant = Asset.Variant.one(this, name"gif")
 
     /** JPG images. */
-    val jpg: Variant = Variant("jpg", "jpeg")
+    val jpg: Asset.Variant = Asset.Variant(this, name"jpg", name"jpeg")
 
     /** PNG images. */
-    val png: Variant = Variant("png")
+    val png: Asset.Variant = Asset.Variant.one(this, name"png")
 
     /* Define the asset type. */
     override type AssetType = Image
@@ -779,7 +805,7 @@ object Pointer {
     override val name: Name = name"image"
 
     /* The extensions to search for. */
-    override val variants: NonEmptyList[Variant] = NonEmptyList.of(gif, jpg, png)
+    override val variants: NonEmptyList[Asset.Variant] = NonEmptyList.of(gif, jpg, png)
 
   }
 
@@ -789,7 +815,7 @@ object Pointer {
   case object Stylesheet extends Asset {
 
     /** CSS stylesheets. */
-    val css: Variant = Variant("css")
+    val css: Asset.Variant = Asset.Variant.one(this, name"css")
 
     /* Define the asset type. */
     override type AssetType = Stylesheet
@@ -801,7 +827,7 @@ object Pointer {
     override val name: Name = name"stylesheet"
 
     /* The extensions to search for. */
-    override val variants: NonEmptyList[Variant] = NonEmptyList.of(css)
+    override val variants: NonEmptyList[Asset.Variant] = NonEmptyList.of(css)
 
   }
 
@@ -811,7 +837,7 @@ object Pointer {
   case object Script extends Asset {
 
     /** JS scripts. */
-    val js: Variant = Variant("js")
+    val js: Asset.Variant = Asset.Variant.one(this, name"js")
 
     /* Define the asset type. */
     override type AssetType = Script
@@ -823,7 +849,7 @@ object Pointer {
     override val name: Name = name"script"
 
     /* The extensions to search for. */
-    override val variants: NonEmptyList[Variant] = NonEmptyList.of(js)
+    override val variants: NonEmptyList[Asset.Variant] = NonEmptyList.of(js)
 
   }
 

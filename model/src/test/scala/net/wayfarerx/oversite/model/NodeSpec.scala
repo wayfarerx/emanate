@@ -213,6 +213,30 @@ class NodeSpec extends FlatSpec with Matchers {
     site.root.search(test1 ^ aliased).unsafeRunSync() shouldBe Vector(Pointer.Entity[Home].apply(Path.empty))
   }
 
+  it should "describe entities" in {
+    site.root.describe(site.root.self).unsafeRunSync() shouldBe
+      Metadata(
+        name"Root Document",
+        Some(Author(name"wayfarerx")),
+        Vector(Markup.Text("The root document.")),
+        Some(Pointer.Image(Pointer.Image.name))
+      )
+    site.root.describe(Pointer.Entity[Test1].apply(name"test-1")).unsafeRunSync() shouldBe
+      Metadata(
+        name"Test Document 1",
+        Some(Author(name"wayfarerx")),
+        Vector(Markup.Text("The first test document.")),
+        Some(Pointer.Image(Pointer.Image.name))
+      )
+    site.root.describe(Pointer.Entity[Test2].apply(Location.resolved(Path("test-2")))).unsafeRunSync() shouldBe
+      Metadata(
+        name"Test Document 2",
+        Some(Author(name"wayfarerx")),
+        Vector(Markup.Text("The second test document.")),
+        Some(Pointer.Image(Pointer.Image.name))
+      )
+  }
+
   it should "load entities" in {
     site.root.load(Pointer.Entity[Home].apply(Location.empty)).unsafeRunSync() shouldBe Home(
       name"Root Document",
@@ -236,6 +260,7 @@ class NodeSpec extends FlatSpec with Matchers {
     site.root.alt(Pointer.Image("images/wx-gear.png")).unsafeRunSync() shouldBe Some("The wayfarerx gear.")
     site.test1.alt(Pointer.Image(name"wx-gear-x3")).unsafeRunSync() shouldBe None
     site.test1.alt(Pointer.Image("images/wx-gear-x3.png")).unsafeRunSync() shouldBe None
+    site.test1.alt(Pointer.External(Pointer.Image, "http://example.com/image.gif")).unsafeRunSync() shouldBe None
     a[Node.Problem] should be thrownBy site.root.alt(Pointer.Image(name"missing")).unsafeRunSync()
     a[Node.Problem] should be thrownBy site.root.alt(Pointer.Image("images/missing.png")).unsafeRunSync()
   }

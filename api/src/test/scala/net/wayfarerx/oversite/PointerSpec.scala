@@ -27,7 +27,7 @@ class PointerSpec extends FlatSpec with Matchers {
 
   import Pointer.{EntityExtensions => _, _}
 
-  "Pointer" should "handle prefixes correctly" in {
+  "Pointer" should "handle prefixes" in {
     Pointer.Prefix.Relative(Path("r")).toLocation(Location.empty) shouldBe
       Some(Location.resolved(Path("r")))
     Pointer.Prefix.Relative(Path("r")).toLocation(Location.resolved(Path("l"))) shouldBe
@@ -38,7 +38,7 @@ class PointerSpec extends FlatSpec with Matchers {
       Some(Location.resolved(Path("a")))
   }
 
-  it should "handle entity pointers correctly" in {
+  it should "handle entity pointers" in {
     val entity = Entity[String]
     val name = name"name"
     val relative = Prefix.Relative(Path("relative"))
@@ -85,7 +85,7 @@ class PointerSpec extends FlatSpec with Matchers {
     narrowTarget shouldBe entity.parse("name/")
   }
 
-  it should "handle asset pointers correctly" in {
+  it should "handle asset pointers" in {
     Seq(Page, Image, Stylesheet, Script) flatMap (a => a.variants.toList map (a -> _)) foreach {
       case (asset, extension) =>
         val name = name"name"
@@ -136,7 +136,7 @@ class PointerSpec extends FlatSpec with Matchers {
           Pointer.parse(s"$p/") shouldBe Search(asset, Prefix.empty, asset.name)
           Pointer.parse(s"/$p/") shouldBe Search(asset, Prefix.root, asset.name)
         }
-        variant.extensions foreach { extension =>
+        variant.extensions.toSortedSet foreach { extension =>
           val suffix = asset.name + "." + extension
           Pointer.parse(suffix) shouldBe Target(asset, Prefix.empty, suffix)
           Pointer.parse(s"/$suffix") shouldBe Target(asset, Prefix.root, suffix)
@@ -169,6 +169,10 @@ class PointerSpec extends FlatSpec with Matchers {
       Pointer.Search(Pointer.Image, Pointer.Prefix.Absolute(a), name"search")
     q.withPrefix(Pointer.Prefix.Absolute(a)) shouldBe
       Pointer.Target(Pointer.Image, Pointer.Prefix.Absolute(a), "search.png")
+  }
+
+  it should "expose variants" in {
+
   }
 
 }

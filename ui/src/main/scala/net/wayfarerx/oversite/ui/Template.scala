@@ -45,7 +45,7 @@ trait Template[-T <: AnyRef] extends Publisher[T] {
 
   /* Map an HTML tag to a string. */
   final override def publish(entity: T)(implicit ctx: Context): IO[String] =
-    toHtml(entity).map(doctype + _.render)
+    toHtml(entity) map (doctype + _.render)
 
 }
 
@@ -62,25 +62,102 @@ object Template {
   trait Support[-T <: AnyRef] extends Template[T] {
 
     /* Compose the HTML page. */
-    final override def toHtml(entity: T)(implicit ctx: Context): IO[TypedTag[String]] = for {
-      _head <- headContent(entity)
-      _body <- toBody(entity)
-    } yield html(head(_head), _body)
+    override def toHtml(entity: T)(implicit ctx: Context): IO[TypedTag[String]] =
+      htmlContent(entity) map { case (_head, _body) => html(_head, _body) }
 
     /**
-     * Create the content of the `head` tag.
+     * Generates the content of the `html` tag.
+     *
+     * @param entity The entity to generate for.
+     * @param ctx The context to generate in.
+     * @return The content of the `html` tag.
+     */
+    protected def htmlContent(entity: T)(implicit ctx: Context): IO[(TypedTag[String], TypedTag[String])] =
+      toHead(entity) flatMap (_head => toBody(entity) map (_body => _head -> _body))
+
+    /**
+     * Generates the `head` tag.
+     *
+     * @param entity The entity to generate for.
+     * @param ctx The context to generate in.
+     * @return The `head` tag.
+     */
+    protected def toHead(entity: T)(implicit ctx: Context): IO[TypedTag[String]] =
+      headContent(entity) map (head(_))
+
+    /**
+     * Generates the content of the `head` tag.
+     *
+     * @param entity The entity to generate for.
+     * @param ctx The context to generate in.
+     * @return The content of the `head` tag.
+     */
+    protected def headContent(entity: T)(implicit ctx: Context): IO[Frag] =
+      defaultHeadContent(entity)
+
+    /**
+     * Generates the `body` tag.
+     *
+     * @param entity The entity to generate for.
+     * @param ctx The context to generate in.
+     * @return The `body` tag.
+     */
+    protected def toBody(entity: T)(implicit ctx: Context): IO[TypedTag[String]] =
+      display(entity) map (body(_))
+
+    /**
+     * Returns the metadata for an entity.
+     *
+     * @param entity The entity to return the metadata for.
+     * @param ctx    The context being published in.
+     * @return The metadata for an entity.
+     */
+    protected def metadata(entity: T)(implicit ctx: Context): IO[Metadata] =
+      ctx.describe(ctx.self)
+
+    /**
+     * Returns the scripts that this template references.
+     *
+     * @param entity The entity to return the scripts for.
+     * @param ctx    The context being published in.
+     * @return The scripts that this template references.
+     */
+    protected def scripts(entity: T)(implicit ctx: Context): IO[Vector[Reference]] =
+      defaultAssetReferences(Pointer.Script, ctx.location)
+
+    /**
+     * Returns the stylesheets that this template references.
+     *
+     * @param entity The entity to return the stylesheets for.
+     * @param ctx    The context being published in.
+     * @return The stylesheets that this template references.
+     */
+    protected def stylesheets(entity: T)(implicit ctx: Context): IO[Vector[Reference]] =
+      defaultAssetReferences(Pointer.Stylesheet, ctx.location)
+
+    /**
+     * Create the content of the `body` tag.
      *
      * @param entity The entity being published.
      * @param ctx    The context being published in.
-     * @return The content of the `head` tag.
+     * @return The content of the `body` tag.
      */
-    def headContent(entity: T)(implicit ctx: Context): IO[Seq[Frag]] = for {
+    protected def display(entity: T)(implicit ctx: Context): IO[Frag]
+
+    /**
+     * Create the default content of the `head` tag.
+     *
+     * @param entity The entity being published.
+     * @param ctx    The context being published in.
+     * @return The default content of the `head` tag.
+     */
+    private def defaultHeadContent(entity: T)(implicit ctx: Context): IO[Frag] = for {
       _metadata <- metadata(entity)
       _image <- _metadata.image map (ctx resolve _ map (Some(_))) getOrElse
         ctx.resolve(Pointer.Image(Pointer.Image.name)).redeem(_ => None, Some(_))
       _alt <- _image map ctx.alt getOrElse IO.pure(None)
-      _scripts <- scripts(entity)
       _stylesheets <- stylesheets(entity)
+      _scripts <- scripts(entity)
     } yield {
       val title = _metadata.name.display
       val author = _metadata.author getOrElse ctx.site.owner
@@ -94,7 +171,7 @@ object Template {
           }) + suffix)
         case _ => None
       }
-      Seq(frag(
+      frag(
         meta(charset := "utf-8"),
         meta(httpEquiv := "X-UA-Compatible", content := "IE=edge"),
         meta(name := "viewport", content := "width=device-width, initial-scale=1"),
@@ -110,50 +187,21 @@ object Template {
         meta(name := "twitter:card", content := src map (_ => "summary_large_image") getOrElse "summary"),
         ctx.site.owner.twitter map (t => meta(name := "twitter:site", content := t)),
         author.twitter map (t => meta(name := "twitter:creator", content := t)),
+        _stylesheets map (ref => link(
+          rel := "stylesheet",
+          href := ref.href.value,
+          ref.integrity map (attr("integrity") := _),
+          ref.crossorigin map (attr("crossorigin") := _)
+        )),
         _scripts map (ref => script(
           `type` := "text/javascript",
           scalatags.Text.attrs.src := ref.href.value,
           ref.integrity map (attr("integrity") := _),
           ref.crossorigin map (attr("crossorigin") := _),
           attr("defer").empty
-        )),
-        _stylesheets map (ref => link(
-          rel := "stylesheet",
-          href := ref.href.value,
-          ref.integrity map (attr("integrity") := _),
-          ref.crossorigin map (attr("crossorigin") := _)
         ))
-      ))
+      )
     }
-
-    /**
-     * Returns the metadata for an entity.
-     *
-     * @param entity The entity to return the metadata for.
-     * @param ctx    The context being published in.
-     * @return The metadata for an entity.
-     */
-    def metadata(entity: T)(implicit ctx: Context): IO[Metadata]
-
-    /**
-     * Returns the scripts that this template references.
-     *
-     * @param entity The entity to return the scripts for.
-     * @param ctx    The context being published in.
-     * @return The scripts that this template references.
-     */
-    def scripts(entity: T)(implicit ctx: Context): IO[Vector[Reference]] =
-      defaults(Pointer.Script, ctx.location)
-
-    /**
-     * Returns the stylesheets that this template references.
-     *
-     * @param entity The entity to return the stylesheets for.
-     * @param ctx    The context being published in.
-     * @return The stylesheets that this template references.
-     */
-    def stylesheets(entity: T)(implicit ctx: Context): IO[Vector[Reference]] =
-      defaults(Pointer.Stylesheet, ctx.location)
 
     /**
      * Returns the default assets of the specified type.
@@ -163,20 +211,29 @@ object Template {
      * @param ctx      The context to resolve pointers with.
      * @return The default assets of the specified type.
      */
-    private def defaults(asset: Pointer.Asset, location: Location)(implicit ctx: Context): IO[Vector[Reference]] = for {
-      h <- Href(asset(location, s"${asset.prefix map (_ + "/") getOrElse ""}${asset.name}.${asset.extension}"))
-        .redeem(_ => None, Some(_))
-      p <- location.parent map (defaults(asset, _)) getOrElse IO.pure(Vector.empty)
-    } yield h map (p :+ Reference(_)) getOrElse p
+    private def defaultAssetReferences(
+      asset: Pointer.Asset,
+      location: Location
+    )(
+      implicit ctx: Context
+    ): IO[Vector[Reference]] = {
+      val base = s"${asset.prefix map (Path(_)) getOrElse Path.empty}${asset.name}."
 
-    /**
-     * Create the `body` tag.
-     *
-     * @param entity The entity being published.
-     * @param ctx    The context being published in.
-     * @return The `body` tag.
-     */
-    def toBody(entity: T)(implicit ctx: Context): IO[TypedTag[String]]
+      /* Find the first asset that exists. */
+      def find(remaining: List[String]): IO[Option[Href]] = remaining match {
+        case ext :: tail => for {
+          h <- Href(asset(location, base + ext)).redeem(_ => None, Some(_))
+          r <- h map (_ => IO.pure(h)) getOrElse find(tail)
+        } yield r
+        case Nil =>
+          IO.pure(None)
+      }
+
+      for {
+        h <- find(asset.variants.flatMap(_.extensions.toNonEmptyList).map(_.normal).toList)
+        p <- location.parent map (defaultAssetReferences(asset, _)) getOrElse IO.pure(Vector.empty)
+      } yield h map (p :+ Reference(_)) getOrElse p
+    }
 
   }
 

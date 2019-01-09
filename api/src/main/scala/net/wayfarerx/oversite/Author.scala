@@ -1,7 +1,7 @@
 /*
  * Author.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ case class Author(
   def id: String = name.normal
 
   /** The external reference if one exists. */
-  def link: Option[Pointer.External[Pointer.Page]] =
+  def href: Option[Pointer.External[Pointer.Page]] =
     twitter.map(t => s"https://twitter.com/$t")
       .orElse(email.map(e => s"mailto:$e"))
       .map(Pointer.External(Pointer.Page, _))

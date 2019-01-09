@@ -51,6 +51,9 @@ sealed trait Node[T <: AnyRef] extends Context {
   /** The document loaded for this node. */
   final val document: IO[Document] = Cached.Soft(Parser parse resource)()
 
+  /** The metadata loaded for this node. */
+  final val metadata: IO[Metadata] = Cached(document map (_.metadata))()
+
   /** The entity decoded for this node. */
   final val entity: IO[T] = Cached.Soft(document flatMap scope.decoder.decode)()
 
@@ -168,6 +171,10 @@ sealed trait Node[T <: AnyRef] extends Context {
   // The context implementations for all nodes.
   //
 
+  /* Point to the current location. */
+  override def self: Pointer.Internal[Pointer.Entity[AnyRef]] =
+    Pointer.Entity[AnyRef].apply(Path.empty)
+
   /* Resolve all pointers. */
   final override def resolve[P <: Pointer.Type](pointer: Pointer[P]): IO[Pointer.Resolved[P]] =
     pointer match {
@@ -267,6 +274,16 @@ sealed trait Node[T <: AnyRef] extends Context {
     index flatMap (_.apply[E](location, queryToFunction(query))) map (_ map { node =>
       Pointer.Target(Pointer.Entity[E], Pointer.Prefix(location, node.location), ())
     })
+  }
+
+  /* Describe the specified entity. */
+  final override def describe(pointer: Pointer[Pointer.Entity[_ <: AnyRef]]): IO[Metadata] = pointer match {
+    case Pointer.Search(_, from, query) =>
+      searchForEntity(pointer.tpe, from, query) flatMap (_.metadata)
+    case Pointer.Target(_, at, _) =>
+      targetEntity(pointer.tpe, at) flatMap (_.metadata)
+    case _ =>
+      sys.error("unreachable")
   }
 
   /* Load the specified entity. */
@@ -400,7 +417,7 @@ sealed trait Node[T <: AnyRef] extends Context {
 
           /* Search the specified node and all of its parents. */
           def searching(node: Node[_ <: AnyRef]): IO[Option[(Node[_ <: AnyRef], Path, String)]] =
-            finding(node, asset.variants.toList.flatMap(_.extensions).toVector) flatMap {
+            finding(node, asset.variants.toList.toVector.flatMap(_.extensions.toSortedSet)) flatMap {
               case Some(file) =>
                 IO.pure(Some((node, path, file)))
               case None =>

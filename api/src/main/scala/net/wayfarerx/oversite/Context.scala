@@ -30,6 +30,9 @@ trait Context {
   /** Returns the site that contains this location. */
   def site: Site[_ <: AnyRef]
 
+  /** Returns the pointer to the entity this context is associated with. */
+  def self: Pointer.Internal[Pointer.Entity[AnyRef]]
+
   /** Returns the current location in the site. */
   def location: Location
 
@@ -85,6 +88,14 @@ trait Context {
    * @return The entity pointers that are assignable to the specified type and satisfy the specified queries.
    */
   def search[T <: AnyRef : ClassTag](query: Query[_ >: T]): IO[Vector[Pointer.Resolved[Pointer.Entity[T]]]]
+
+  /**
+   * Attempts to describe the data associated with the specified entity.
+   *
+   * @param pointer The internal pointer to the entity to describe.
+   * @return The result of attempting to describe the data for the specified entity.
+   */
+  def describe(pointer: Pointer[Pointer.Entity[_ <: AnyRef]]): IO[Metadata]
 
   /**
    * Attempts to load the data associated with the specified entity.

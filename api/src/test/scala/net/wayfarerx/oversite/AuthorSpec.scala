@@ -34,12 +34,12 @@ class AuthorSpec extends FlatSpec with Matchers {
 
   it should "generate external links" in {
     val name = name"wayfarerx"
-    Author(name).link shouldBe None
-    Author(name, Some("thewayfarerx")).link shouldBe
+    Author(name).href shouldBe None
+    Author(name, Some("thewayfarerx")).href shouldBe
       Some(Pointer.External(Pointer.Page, "https://twitter.com/thewayfarerx"))
-    Author(name, None, Some("x@wayfarerx.net")).link shouldBe
+    Author(name, None, Some("x@wayfarerx.net")).href shouldBe
       Some(Pointer.External(Pointer.Page, "mailto:x@wayfarerx.net"))
-    Author(name, Some("thewayfarerx"), Some("x@wayfarerx.net")).link shouldBe
+    Author(name, Some("thewayfarerx"), Some("x@wayfarerx.net")).href shouldBe
       Some(Pointer.External(Pointer.Page, "https://twitter.com/thewayfarerx"))
   }
 

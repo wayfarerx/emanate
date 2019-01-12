@@ -706,7 +706,12 @@ object Pointer {
      * @param asset      The asset this variant represents.
      * @param extensions The extensions for this variant.
      */
-    case class Variant (asset: Asset, extensions: NonEmptySet[Name])
+    case class Variant(asset: Asset, extensions: NonEmptySet[Name]) {
+
+      /** The default extension for this variant. */
+      def extension: Name = extensions.toSortedSet minBy (_.normal.length)
+
+    }
 
     /**
      * Factory for asset variants.
@@ -716,8 +721,8 @@ object Pointer {
       /**
        * Creates an asset variant with the specified settings.
        *
-       * @param asset The asset that this variant represents.
-       * @param extension The default extension to use for the asset variant.
+       * @param asset      The asset that this variant represents.
+       * @param extension  The default extension to use for the asset variant.
        * @param extensions The other extensions to use for the asset variant.
        * @return An asset variant with the specified settings.
        */
@@ -727,8 +732,8 @@ object Pointer {
       /**
        * Creates an asset variant with the specified settings.
        *
-       * @param asset The asset that this variant represents.
-       * @param extension The default extension to use for the asset variant.
+       * @param asset      The asset that this variant represents.
+       * @param extension  The default extension to use for the asset variant.
        * @param extensions The other extensions to use for the asset variant.
        * @return An asset variant with the specified settings.
        */
@@ -738,7 +743,7 @@ object Pointer {
       /**
        * Creates an asset variant with a single extension.
        *
-       * @param asset The asset that this variant represents.
+       * @param asset     The asset that this variant represents.
        * @param extension The extension to use for the asset variant.
        * @return An asset variant with a single extension.
        */
@@ -748,7 +753,7 @@ object Pointer {
       /**
        * Attempts to crate an asset variant with the specified settings.
        *
-       * @param asset The asset that this variant represents.
+       * @param asset      The asset that this variant represents.
        * @param extensions The extensions to use for the asset variant.
        * @return An asset variant with the specified settings if one could be created.
        */

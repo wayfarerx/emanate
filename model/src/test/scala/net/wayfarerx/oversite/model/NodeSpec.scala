@@ -164,9 +164,9 @@ class NodeSpec extends FlatSpec with Matchers {
       .unsafeRunSync() shouldBe Pointer.Stylesheet(Location.empty, "stylesheets/styles.css")
     site.root.resolve(Pointer.Stylesheet("stylesheets/styles.css"))
       .unsafeRunSync() shouldBe Pointer.Stylesheet(Path.empty, "stylesheets/styles.css")
-    site.test2.generates(Path("foo/bar"), "styles.css") shouldBe false
-    site.test2.generates(Path("foo"), "bar") shouldBe false
-    site.test2.generates(Path("foo"), "bar.css") shouldBe false
+    site.test2.generates(Path("foo/bar"), "styles.css") shouldBe None
+    site.test2.generates(Path("foo"), "bar") shouldBe None
+    site.test2.generates(Path("foo"), "bar.css") shouldBe None
   }
 
   it should "search for entities" in {

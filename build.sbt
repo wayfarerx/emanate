@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.2.2",
+  version := "0.3.0",
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
   libraryDependencies += ScalaTest % Test
 )
@@ -15,13 +15,6 @@ lazy val api = (project in file("api")).
     libraryDependencies += CatsEffect
   )
 
-lazy val model = (project in file("model")).
-  settings(
-    common,
-    name := "oversite-model",
-    libraryDependencies += LaikaCore
-  ).dependsOn(api)
-
 lazy val ui = (project in file("ui")).
   settings(
     common,
@@ -32,6 +25,25 @@ lazy val ui = (project in file("ui")).
     )
   ).dependsOn(api)
 
+lazy val model = (project in file("model")).
+  settings(
+    common,
+    name := "oversite-model",
+    libraryDependencies += LaikaCore
+  ).dependsOn(api)
+
+lazy val server = (project in file("server")).
+  settings(
+    common,
+    name := "oversite-server",
+    libraryDependencies ++= Seq(
+      Scopt,
+      Logback,
+      Http4sDsl,
+      Http4sBlazeServer
+    )
+  ).dependsOn(model)
+
 /*
 lazy val generator = (project in file("generator")).
   settings(
@@ -41,19 +53,6 @@ lazy val generator = (project in file("generator")).
       Slf4j,
       Fs2Core,
       Fs2Io
-    )
-  ).dependsOn(model)
-
-lazy val server = (project in file("server")).
-  settings(
-    common,
-    name := "oversite-server",
-    libraryDependencies ++= Seq(
-      Slf4j,
-      Fs2Core,
-      Fs2Io,
-      Http4sDsl,
-      Http4sBlazeServer
     )
   ).dependsOn(model)
 

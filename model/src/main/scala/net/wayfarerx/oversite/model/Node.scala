@@ -127,23 +127,18 @@ sealed trait Node[T <: AnyRef] extends Context {
    * @param file The file to check for generation in the path.
    * @return True if this node generates the specified file.
    */
-  final def generates(path: Path, file: String): Boolean = {
-    for {
-      p <- path match {
-        case Path(Vector(Path.Child(pp))) => Some(Some(pp))
-        case Path.empty => Some(None)
-        case _ => None
-      }
-      (n, e) <- file lastIndexOf '.' match {
-        case index if index >= 0 =>
-          Name(file.substring(0, index)) flatMap (nn => Name(file.substring(index + 1)) map (nn -> _))
-        case _ => None
-      }
-      v <- Pointer.VariantsByExtension get e
-    } yield v.asset.prefix == p && scope.generators.exists {
-      case Scope.Generator(nn, vv, _) => n == nn && v == vv
+  final def generates(path: Path, file: String): Option[Scope.Generator] = for {
+    p <- path.normalized match {
+      case Path(Vector(Path.Child(pp))) => Some(Some(pp))
+      case Path.empty => Some(None)
+      case _ => None
     }
-  } getOrElse false
+    (n, e) <- file lastIndexOf '.' match {
+      case i if i > 0 => Name(file.substring(0, i)) flatMap (nn => Name(file.substring(i + 1)) map (nn -> _))
+      case _ => None
+    }
+    g <- scope.generators find (gg => gg.tpe.asset.prefix == p && gg.name == n && gg.tpe.extension == e)
+  } yield g
 
   /**
    * Resolves all the specified pointers into nodes.
@@ -319,7 +314,7 @@ sealed trait Node[T <: AnyRef] extends Context {
    * @param at     The prefix that specifies the desired entity node.
    * @return The desired entity node.
    */
-  private def targetEntity(
+  def targetEntity(
     entity: Pointer.Entity[_ <: AnyRef],
     at: Pointer.Prefix
   ): IO[Node[_ <: AnyRef]] =
@@ -337,7 +332,7 @@ sealed trait Node[T <: AnyRef] extends Context {
    * @param from   The prefix that specifies the node to search from.
    * @return The desired entity node.
    */
-  private def searchForEntity(
+  def searchForEntity(
     entity: Pointer.Entity[_ <: AnyRef],
     from: Pointer.Prefix,
     query: Name
@@ -372,13 +367,13 @@ sealed trait Node[T <: AnyRef] extends Context {
    * @param suffix The suffix of the targeted asset.
    * @return The desired asset target.
    */
-  private def targetAsset(
+  def targetAsset(
     prefix: Pointer.Prefix,
     suffix: String
   ): IO[(Node[_ <: AnyRef], Path, String)] =
     canonicalAsset(prefix, suffix) flatMap {
       case (node, path, file) =>
-        if (node.generates(path, file)) IO.pure((node, path, file))
+        if (node.generates(path, file).nonEmpty) IO.pure((node, path, file))
         else resources find node.source.toString + path + file flatMap {
           _ map (_ => IO.pure((node, path, file))) getOrElse[IO[(Node[_ <: AnyRef], Path, String)]]
             Problem.raise(s"Cannot find asset ${
@@ -395,7 +390,7 @@ sealed trait Node[T <: AnyRef] extends Context {
    * @param query The file name query to search for.
    * @return The desired asset target.
    */
-  private def searchForAsset(
+  def searchForAsset(
     asset: Pointer.Asset,
     from: Pointer.Prefix,
     query: Name
@@ -408,7 +403,7 @@ sealed trait Node[T <: AnyRef] extends Context {
           def finding(node: Node[_ <: AnyRef], remaining: Vector[Name]): IO[Option[String]] = remaining match {
             case head +: tail =>
               val file = s"$query.$head"
-              if (node.generates(path, file)) IO.pure(Some(file))
+              if (node.generates(path, file).nonEmpty) IO.pure(Some(file))
               else resources find node.source.toString + path + file flatMap {
                 _ map (_ => IO.pure(Some(file))) getOrElse finding(node, tail)
               }
@@ -477,6 +472,25 @@ sealed trait Node[T <: AnyRef] extends Context {
   private def locate(prefix: Pointer.Prefix): Option[Location] = prefix match {
     case Pointer.Prefix.Relative(p) => location :++ p
     case Pointer.Prefix.Absolute(l) => Some(l)
+  }
+
+  /**
+   * Reads the content of the underlying entity.
+   *
+   * @return The content of the underlying entity.
+   */
+  def read(): IO[String] =
+    entity flatMap scope.publisher.publish
+
+  /**
+   * Reads the content of a member asset.
+   *
+   * @param asset The path to the member asset.
+   * @return The content of a member asset.
+   */
+  def readAsset(asset: String): IO[Either[Array[Byte], URL]] = {
+    val (path, file) = Path.parse(asset)
+    file flatMap (generates(path, _)) map (_ generate this map (Left(_))) getOrElse Problem.raise(s"Cannot read $source$asset")
   }
 
 }

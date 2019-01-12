@@ -1,7 +1,7 @@
 /*
  * Main.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,38 +19,51 @@
 package net.wayfarerx.oversite
 package server
 
-import concurrent.ExecutionContext.Implicits.global
+import cats.effect.{ExitCode, IO, IOApp}
 
-import cats.effect.IO
+import org.slf4j.LoggerFactory
 
-import fs2.{Stream, StreamApp}
+import model.Node
 
 /**
- * Main entry point for the oversite server.
+ * The oversite server application.
  */
-object Main extends StreamApp[IO] {
+object Main extends IOApp {
 
-  /** The regex that describes a port. */
-  private val PortPattern =
-    s"""[0-9]+""".r
+  /** The name of this application. */
+  private val name = "oversite-server"
 
-  /* Construct a stream that can only complete when the JVM is terminated. */
-  def stream(args: List[String], requestShutdown: IO[Unit]): Stream[IO, StreamApp.ExitCode] = args match {
-    case className :: PortPattern(port) :: host :: Nil =>
-      Stream.eval(IO(port.toInt)).flatMap(Server(className, _, host))
-    case className :: host :: PortPattern(port) :: Nil =>
-      Stream.eval(IO(port.toInt)).flatMap(Server(className, _, host))
-    case className :: PortPattern(port) :: Nil =>
-      Stream.eval(IO(port.toInt)).flatMap(Server(className, _))
-    case className :: host :: Nil =>
-      Server(className, host = host)
-    case className :: Nil =>
-      Server(className)
-    case _ =>
-      Stream {
-        println("Usage: oversite <site-class> [host] [port]")
-        StreamApp.ExitCode.Error
-      }
+  /** The root application logger. */
+  private val logger = LoggerFactory.getLogger(getClass)
+
+  /** The command-line argument parser. */
+  private val arguments = new scopt.OptionParser[Configuration](name) {
+    head(name, "v0")
+    arg[String]("<site>") action ((s, c) => c.copy(site = s)) text "the name of the class that implements Site"
+    arg[Int]("[port]").optional action ((p, c) => c.copy(port = p)) text "the port to serve on"
+    arg[String]("[host]").optional action ((h, c) => c.copy(host = h)) text "the hostname to serve on"
   }
+
+  /* Parse the command-line arguments and run the server. */
+  override def run(args: List[String]): IO[ExitCode] =
+    arguments.parse(args, Configuration()) map { config =>
+      Node.Root[AnyRef](config.site).flatMap(r => Server(r, config.host, config.port)).redeemWith(
+        t => IO(logger.error("Oversite quit unexpectedly.", t)).redeem(_ => ExitCode.Error, _ => ExitCode.Error),
+        IO.pure
+      )
+    } getOrElse IO.pure(ExitCode.Error)
+
+  /**
+   * The configuration derived from the command-line arguments.
+   *
+   * @param site The name of the class that implements `Site`.
+   * @param host The hostname to serve on.
+   * @param port The port to serve on.
+   */
+  case class Configuration(
+    site: String = "",
+    port: Int = Server.DefaultPort,
+    host: String = Server.DefaultHost
+  )
 
 }

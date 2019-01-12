@@ -1,7 +1,7 @@
 /*
  * Server.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,107 +19,88 @@
 package net.wayfarerx.oversite
 package server
 
-import concurrent.ExecutionContext.Implicits.global
-import cats.effect.IO
-import fs2.Stream
-import fs2.StreamApp.ExitCode
-import org.http4s._
+import java.util.concurrent.Executors
+
+import concurrent.ExecutionContext
+import concurrent.duration._
+
+import cats.effect.{ContextShift, ExitCode, IO, Timer}
+
+import org.http4s.{Charset, HttpRoutes, MediaType, StaticFile}
 import org.http4s.dsl.io._
 import org.http4s.headers.`Content-Type`
-import org.http4s.server.blaze._
-import net.wayfarerx.oversite.{Path => OPath}
+import org.http4s.server.ServerBuilder
+import org.http4s.server.blaze.BlazeServerBuilder
+
+import model.Node
 
 /**
- * Factory for Oversite servers.
+ * The application that serves an oversite site.
  */
 object Server {
 
-  import model.Website
+  /** The value to use for the default host. */
+  val DefaultHost: String = ""
 
-  /** The default TCP port to listen on. */
-  val DefaultPort: Int = 4000
+  /** The value to use for the default port. */
+  val DefaultPort: Int = -1
 
-  /** The default host to listen on. */
-  val DefaultHost: String = "localhost"
-
-  /**
-   * Runs a site.
-   *
-   * @tparam T The type of site reference to accept.
-   * @param site The site to run.
-   * @param port The TCP port to listen on.
-   * @param host The host to listen on.
-   * @return The lifecycle of the server.
-   */
-  def apply[T: Website.Source](site: T, port: Int = DefaultPort, host: String = DefaultHost): Stream[IO, ExitCode] =
-    Stream.eval[IO, Stream[IO, ExitCode]] {
-      IO(new model.Environment(Thread.currentThread.getContextClassLoader)) flatMap { implicit env =>
-        Website(site) map (w => BlazeBuilder[IO].bindHttp(port, host).mountService(service(w), "/").serve)
-      }
-    } flatMap identity
-
+  /** The value to use for the default shutdown wait time. */
+  val DefaultWait: Duration = 2.seconds
 
   /**
-   * Creates an HTTP service definition.
+   * Runs the server indefinitely.
    *
-   * @param website The website to serve.
-   * @return The new HTTP service definition.
+   * @param root  The root node in the site.
+   * @param host  The host to bind to.
+   * @param port  The port to bind to.
+   * @param wait  The duration to wait for the server to shut down.
+   * @param shift The context to shift from.
+   * @param timer The global timer.
+   * @return The result of running the server.
    */
-  private def service(website: Website) = {
-
-    /* Attempts to serve the resource at the specified path. */
-    def serveResource(path: Path) =
-      Some(path.toList mkString "/")
-        .filterNot(_ endsWith ".md")
-        .map(website.environment.find)
-        .getOrElse(IO.pure(None))
-        .map(_ map (url => fs2.io.readInputStream(IO(url.openStream()), 4096)))
-        .flatMap {
-          _ map { data =>
-            path.lastOption
-              .map(s => s.substring(s.lastIndexOf('.') + 1))
-              .flatMap(MediaType.forExtension)
-              .map(m => Ok(data, `Content-Type`(m)))
-              .getOrElse(Ok(data))
-          } getOrElse notFound(path)
-        }
-
-    /* Returns a not found response. */
-    def notFound(path: Path) =
-      NotFound(s"Not found: ${path.toList mkString "/"}")
-
-    HttpRoutes.of[IO] {
-
-      case GET -> path
-        if path.lastOption.exists(_ endsWith ".css") && path.parent.lastOption.contains(Asset.Stylesheet.prefix) =>
-        val name = path.lastOption.get.substring(0, path.lastOption.get.length - 4)
-        website.site.find(path.toList.toVector dropRight 2).stylesheets collectFirst {
-          case Styles.Generated(n, generate) if n.normal == name => generate
-        } map { generate =>
-          MediaType.forExtension("css") map (m => Ok(generate(), `Content-Type`(m))) getOrElse Ok(generate())
-        } getOrElse serveResource(path)
-
-      case GET -> path if path.lastOption exists (_ contains '.') =>
-        serveResource(path)
-
-      case GET -> path =>
-        println(s"PATH: $path")
-        for {
-          page <- website.root.index.map({ index =>
-            println(s"INDEX: ${index.pagesByLocation.mapValues(_.name)}")
-            Location(OPath(path.toList.mkString("/"))) flatMap index.pagesByLocation.get
-          })
-          html <- page map (_.publish map (Some(_))) getOrElse IO.pure(None)
-          response <- html map { page =>
-            MediaType.forExtension("html") map (m => Ok(page, `Content-Type`(m))) getOrElse Ok(page)
-          } getOrElse notFound(path)
-        } yield {
-          println(s"PAGE: ${page map (_.location)}")
-          println()
-          response
-        }
-
-    }
-  }
+  def apply(
+    root: Node.Root[_ <: AnyRef],
+    host: String = DefaultHost,
+    port: Int = DefaultPort,
+    wait: Duration = DefaultWait
+  )(implicit
+    shift: ContextShift[IO],
+    timer: Timer[IO]
+  ): IO[ExitCode] =
+    IO(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())).bracket { blockingExecutionContext =>
+      BlazeServerBuilder[IO].bindHttp(
+        if (port < 0) ServerBuilder.DefaultHttpPort else port,
+        if (host.isEmpty) ServerBuilder.DefaultHost else host
+      ).withHttpApp(HttpRoutes.of[IO] {
+        case request@GET -> path =>
+          root.resolve(Pointer.parse(path.toList.mkString("/", "/", ""))).redeemWith(_ => NotFound(), {
+            case Pointer.Target(tpe, prefix, suffix) =>
+              root.index flatMap { index =>
+                prefix.toLocation(root.location) flatMap (index(_)) map { node =>
+                  tpe match {
+                    case _: Pointer.Asset => node.readAsset(suffix.toString).redeemWith(_ => NotFound(), _.fold(
+                      data => suffix.toString lastIndexOf '.' match {
+                        case i if i >= 0 => MediaType forExtension suffix.toString.substring(i + 1) map { media =>
+                          Ok(data) map (_.withContentType(`Content-Type`(media)))
+                        } getOrElse NotFound()
+                        case _ => NotFound()
+                      },
+                      StaticFile.fromURL(_, blockingExecutionContext, Some(request)) getOrElseF NotFound()
+                    ))
+                    case _ => node.read() flatMap { published =>
+                      Ok(published getBytes "UTF-8")
+                        .map(_.withContentType(`Content-Type`(MediaType.all("text" -> "html"), Charset.`UTF-8`)))
+                    }
+                  }
+                } getOrElse NotFound()
+              }
+            case _ => NotFound()
+          }).redeemWith(_ => InternalServerError(), IO.pure)
+      }.orNotFound).serve.compile.lastOrError
+    }(blockingExecutionContext => IO({
+      blockingExecutionContext.shutdown()
+      blockingExecutionContext.awaitTermination(wait.length, wait.unit)
+    }))
 
 }

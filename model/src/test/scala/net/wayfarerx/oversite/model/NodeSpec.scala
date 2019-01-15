@@ -39,41 +39,41 @@ class NodeSpec extends FlatSpec with Matchers {
     site.root.entity.unsafeRunSync() shouldBe Home(
       name"root-document",
       Some(Author(name"wayfarerx", None, None)),
-      Vector(Markup.Text("The root document."))
+      List(Markup.Text("The root document."))
     )
     site.root.children.unsafeRunSync().toSet shouldBe Set(site.test1, site.test2, site.aliased)
     site.test1.name shouldBe name"test-1"
     site.test1.entity.unsafeRunSync() shouldBe Test1(
       name"test-document-1",
       Some(Author(name"wayfarerx", None, None)),
-      Vector(Markup.Text("The first test document."))
+      List(Markup.Text("The first test document."))
     )
     site.test1.children.unsafeRunSync().toSet shouldBe Set(site.test1Nested)
     site.test1Nested.name shouldBe name"nested"
     site.test1Nested.entity.unsafeRunSync() shouldBe Test1(
       name"nested-test-document-1",
       Some(Author(name"wayfarerx", None, None)),
-      Vector(Markup.Text("The nested first test document."))
+      List(Markup.Text("The nested first test document."))
     )
     site.test2.name shouldBe name"test-2"
     site.test2.entity.unsafeRunSync() shouldBe Test2(
       name"test-document-2",
       Some(Author(name"wayfarerx", None, None)),
-      Vector(Markup.Text("The second test document."))
+      List(Markup.Text("The second test document."))
     )
     site.test2.children.unsafeRunSync().toSet shouldBe Set(site.test2Nested, site.deep)
     site.test2Nested.name shouldBe name"nested"
     site.test2Nested.entity.unsafeRunSync() shouldBe Test2Nested(
       name"nested-test-document-2",
       Some(Author(name"wayfarerx", None, None)),
-      Vector(Markup.Text("The nested second test document."))
+      List(Markup.Text("The nested second test document."))
     )
     site.deep.children.unsafeRunSync() shouldBe Vector.empty
     site.deep.name shouldBe name"deep"
     site.deep.entity.unsafeRunSync() shouldBe Test2(
       name"deep-document",
       Some(Author(name"wayfarerx", None, None)),
-      Vector(Markup.Text("The deep document."))
+      List(Markup.Text("The deep document."))
     )
     site.deep.site.isInstanceOf[TestSite] shouldBe true
 
@@ -81,7 +81,7 @@ class NodeSpec extends FlatSpec with Matchers {
     site.aliased.entity.unsafeRunSync() shouldBe Aliased(
       name"aliased-document",
       Some(Author(name"wayfarerx", None, None)),
-      Vector(Markup.Text("The aliased document."))
+      List(Markup.Text("The aliased document."))
     )
     site.aliased.children.unsafeRunSync() shouldBe Vector.empty
     site.aliased.site.isInstanceOf[TestSite] shouldBe true
@@ -218,21 +218,21 @@ class NodeSpec extends FlatSpec with Matchers {
       Metadata(
         name"Root Document",
         Some(Author(name"wayfarerx")),
-        Vector(Markup.Text("The root document.")),
+        List(Markup.Text("The root document.")),
         Some(Pointer.Image(Pointer.Image.name))
       )
     site.root.describe(Pointer.Entity[Test1].apply(name"test-1")).unsafeRunSync() shouldBe
       Metadata(
         name"Test Document 1",
         Some(Author(name"wayfarerx")),
-        Vector(Markup.Text("The first test document.")),
+        List(Markup.Text("The first test document.")),
         Some(Pointer.Image(Pointer.Image.name))
       )
     site.root.describe(Pointer.Entity[Test2].apply(Location.resolved(Path("test-2")))).unsafeRunSync() shouldBe
       Metadata(
         name"Test Document 2",
         Some(Author(name"wayfarerx")),
-        Vector(Markup.Text("The second test document.")),
+        List(Markup.Text("The second test document.")),
         Some(Pointer.Image(Pointer.Image.name))
       )
   }
@@ -241,28 +241,34 @@ class NodeSpec extends FlatSpec with Matchers {
     site.root.load(Pointer.Entity[Home].apply(Location.empty)).unsafeRunSync() shouldBe Home(
       name"Root Document",
       Some(Author(name"wayfarerx")),
-      Vector(Markup.Text("The root document."))
+      List(Markup.Text("The root document."))
     )
     site.root.load(Pointer.Entity[Test1].apply(name"test-1")).unsafeRunSync() shouldBe Test1(
       name"Test Document 1",
       Some(Author(name"wayfarerx")),
-      Vector(Markup.Text("The first test document."))
+      List(Markup.Text("The first test document."))
     )
     site.root.load(Pointer.Entity[Test2].apply(Path("test-2"))).unsafeRunSync() shouldBe Test2(
       name"Test Document 2",
       Some(Author(name"wayfarerx")),
-      Vector(Markup.Text("The second test document."))
+      List(Markup.Text("The second test document."))
     )
   }
 
   it should "load alt text" in {
     site.root.alt(Pointer.Image(name"wx-gear")).unsafeRunSync() shouldBe Some("The wayfarerx gear.")
     site.root.alt(Pointer.Image("images/wx-gear.png")).unsafeRunSync() shouldBe Some("The wayfarerx gear.")
+    site.root.alt(Pointer.Image("images/wx-gear-x3")).unsafeRunSync() shouldBe Some("The other wayfarerx gear.")
     site.test1.alt(Pointer.Image(name"wx-gear-x3")).unsafeRunSync() shouldBe None
     site.test1.alt(Pointer.Image("images/wx-gear-x3.png")).unsafeRunSync() shouldBe None
     site.test1.alt(Pointer.External(Pointer.Image, "http://example.com/image.gif")).unsafeRunSync() shouldBe None
     a[Node.Problem] should be thrownBy site.root.alt(Pointer.Image(name"missing")).unsafeRunSync()
     a[Node.Problem] should be thrownBy site.root.alt(Pointer.Image("images/missing.png")).unsafeRunSync()
+  }
+
+  it should "support aliased roots" in {
+    val root = Node.Root[Home](classOf[AliasedTestSite].getName, site.resources).unsafeRunSync()
+    root.source shouldBe Path.empty
   }
 
 }
@@ -277,12 +283,14 @@ object NodeSpec {
    */
   private final class SiteMap {
 
+    /** The resources implementation. */
+    lazy val resources = Resources.Classpath(new URLClassLoader(
+      Array(Paths.get("model/src/test/resources/node-spec/site").toUri.toURL),
+      getClass.getClassLoader
+    ))
+
     /** The root node. */
-    lazy val root = {
-      val file = Paths.get("model/src/test/resources/node-spec/site").toUri.toURL
-      val resources = Resources.Classpath(new URLClassLoader(Array(file), getClass.getClassLoader))
-      Node.Root[Home](classOf[TestSite].getName, resources).unsafeRunSync()
-    }
+    lazy val root = Node.Root[Home](classOf[TestSite].getName, resources).unsafeRunSync()
 
     /** The test-1 node. */
     lazy val test1 =
@@ -320,7 +328,7 @@ object NodeSpec {
       override def publish(entity: T)(implicit ctx: Context): IO[String] = IO(entity.toString)
     }
 
-    def decoder[T <: AnyRef](f: (Name, Option[Author], Vector[Markup.Inline]) => T): Decoder[T] = new Decoder[T] {
+    def decoder[T <: AnyRef](f: (Name, Option[Author], List[Markup.Inline]) => T): Decoder[T] = new Decoder[T] {
       override def decode(document: Document)(implicit ctx: Context): IO[T] =
         IO.pure(f(document.metadata.name, document.metadata.author, document.metadata.description))
     }
@@ -328,7 +336,7 @@ object NodeSpec {
   }
 
   /** The home entity. */
-  case class Home(name: Name, author: Option[Author], description: Vector[Markup.Inline]) extends Model
+  case class Home(name: Name, author: Option[Author], description: List[Markup.Inline]) extends Model
 
   /** Provides the decoder for home entities. */
   object Home {
@@ -343,7 +351,7 @@ object NodeSpec {
   }
 
   /** The test-1 entity. */
-  case class Test1(name: Name, author: Option[Author], description: Vector[Markup.Inline]) extends Model
+  case class Test1(name: Name, author: Option[Author], description: List[Markup.Inline]) extends Model
 
   /** Provides the decoder for test-1 entities. */
   object Test1 {
@@ -351,7 +359,7 @@ object NodeSpec {
   }
 
   /** The test-2 entity. */
-  case class Test2(name: Name, author: Option[Author], description: Vector[Markup.Inline]) extends Model
+  case class Test2(name: Name, author: Option[Author], description: List[Markup.Inline]) extends Model
 
   /** Provides the decoder for test-2 entities. */
   object Test2 {
@@ -359,7 +367,7 @@ object NodeSpec {
   }
 
   /** The test-2 nested entity. */
-  case class Test2Nested(name: Name, author: Option[Author], description: Vector[Markup.Inline]) extends Model
+  case class Test2Nested(name: Name, author: Option[Author], description: List[Markup.Inline]) extends Model
 
   /** Provides the decoder for test-2 nested entities. */
   object Test2Nested {
@@ -367,7 +375,7 @@ object NodeSpec {
   }
 
   /** The test-2 nested entity. */
-  case class Aliased(name: Name, author: Option[Author], description: Vector[Markup.Inline]) extends Model
+  case class Aliased(name: Name, author: Option[Author], description: List[Markup.Inline]) extends Model
 
   /** Provides the decoder for test-2 nested entities. */
   object Aliased {
@@ -375,7 +383,7 @@ object NodeSpec {
   }
 
   /** The site fixture. */
-  final class TestSite extends Site[Home] {
+  class TestSite extends Site[Home] {
 
     override def name: Name = name"Test"
 
@@ -386,7 +394,7 @@ object NodeSpec {
     override def scopes: Scope[Home] = Scope[Home](
       Scope.Select(name"test-1") -> Scope[Test1](),
       Scope.Select(name"test-2") -> Scope[Test2](
-        Vector(Scope.Generator(
+        List(Scope.Generator(
           name"generated",
           Pointer.Stylesheet.css,
           _ => IO.pure("img { border: 0; }".getBytes("UTF-8"))
@@ -395,6 +403,16 @@ object NodeSpec {
       ),
       Scope.Select(name"aliased") -> Scope.Aliased[Aliased](Path("aliased/resources"))
     )
+
+  }
+
+  /** The other site fixture. */
+  class AliasedTestSite extends TestSite {
+
+    override def scopes: Scope[Home] = super.scopes match {
+      case n@Scope.Nested(_, _, _) => n.toAliased(Path.empty)
+      case _ => sys.error("Should be a nested scope.")
+    }
 
   }
 

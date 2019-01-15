@@ -1,7 +1,7 @@
 /*
  * Path.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,11 +33,13 @@ case class Path(elements: Vector[Path.Element]) {
   def parent: Path = this :+ Parent
 
   /** True if this path is normal (has no '.' elements and no unresolved '..' elements). */
-  def isNormalized: Boolean = !elements.contains(Current) && !elements.dropWhile(_ == Parent).contains(Parent)
+  def isNormalized: Boolean =
+    !elements.contains(Current) && !elements.dropWhile(_ == Parent).contains(Parent)
 
   /** The normalized version of this path. */
   def normalized: Path =
-    if (isNormalized) this else Path((Vector.empty[Element] /: elements) { (result, element) =>
+    if (isNormalized) this
+    else Path((Vector.empty[Element] /: elements) { (result, element) =>
       element match {
         case Current => result
         case Parent if result.isEmpty || result.last == Parent => result :+ Parent
@@ -47,11 +49,12 @@ case class Path(elements: Vector[Path.Element]) {
     })
 
   /** True if this path is resolved (has no '.' or '..' elements). */
-  def isResolved: Boolean = !elements.exists(e => e == Current || e == Parent)
+  def isResolved: Boolean =
+    !elements.exists(e => e == Current || e == Parent)
 
   /** The resolved version of this path. */
   def resolved: Path =
-    if (isResolved) this else Path(normalized.elements.dropWhile(_ == Path.Parent))
+    if (isResolved) this else Path(normalized.elements dropWhile (_ == Path.Parent))
 
   /**
    * Prepends a child element with the specified name to this path.
@@ -262,7 +265,7 @@ object Path {
    *
    * @tparam T The type to build elements from.
    */
-  trait Builder[T] {
+  trait Builder[-T] {
 
     /**
      * Converts input into elements.
@@ -286,7 +289,10 @@ object Path {
     implicit val Regulars: Builder[Regular] = _ flatMap extractElements
 
     /** Builds elements from path strings. */
-    implicit val Strings: Builder[String] = _ flatMap (extractElements(_))
+    implicit val Strings: Builder[String] = _ map (Regular(_)) flatMap extractElements
+
+    /** Builds elements from path strings. */
+    implicit val Elements: Builder[Element] = identity(_)
 
   }
 

@@ -1,7 +1,7 @@
 /*
  * MetadataSpec.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import org.scalatest.{FlatSpec, Matchers}
 class MetadataSpec extends FlatSpec with Matchers {
 
   "Metadata" should "accept default arguments" in {
-    Metadata(name"name") shouldBe Metadata(name"name", None, Vector.empty, Some(Pointer.Image(Pointer.Image.name)))
+    Metadata(name"name") shouldBe Metadata(name"name", None, Nil, Some(Pointer.Image(Pointer.Image.name)))
   }
 
 }

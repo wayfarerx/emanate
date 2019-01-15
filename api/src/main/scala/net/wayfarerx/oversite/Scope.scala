@@ -1,7 +1,7 @@
 /*
  * Scope.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,10 +42,10 @@ sealed trait Scope[T <: AnyRef] {
   def indexed: Boolean
 
   /** The asset generators for this scope. */
-  def generators: Vector[Scope.Generator]
+  def generators: List[Scope.Generator]
 
   /** The selectors for children of this scope. */
-  def children: Vector[(Scope.Select, Scope[_ <: AnyRef])]
+  def children: List[(Scope.Select, Scope[_ <: AnyRef])]
 
   /** Returns this scope as an unspecified extension of itself. */
   def extended: Scope[T]
@@ -81,7 +81,7 @@ object Scope {
   def DefaultIndexed: Boolean = true
 
   /** The default generators setting. */
-  def DefaultGenerators: Vector[Generator] = Vector.empty
+  def DefaultGenerators: List[Generator] = List.empty
 
   /**
    * Creates an indexed scope with all children using the specified child scope.
@@ -103,7 +103,7 @@ object Scope {
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     children: (Select, Scope[_ <: AnyRef])*
-  ): Nested[T] = apply(DefaultIndexed, DefaultGenerators, children.toVector: _*)
+  ): Nested[T] = apply(DefaultIndexed, DefaultGenerators, children.toList: _*)
 
   /**
    * Creates a possibly indexed scope with all children using the specified child scope.
@@ -129,7 +129,7 @@ object Scope {
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     indexed: Boolean,
     children: (Select, Scope[_ <: AnyRef])*
-  ): Nested[T] = apply(indexed, DefaultGenerators, children.toVector: _*)
+  ): Nested[T] = apply(indexed, DefaultGenerators, children.toList: _*)
 
   /**
    * Creates an indexed scope with asset generators and all children using the specified child scope.
@@ -140,7 +140,7 @@ object Scope {
    * @return A new scope.
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
-    generators: Vector[Generator],
+    generators: List[Generator],
     children: Scope[_ <: AnyRef]
   ): Nested[T] = apply(DefaultIndexed, generators, children)
 
@@ -153,9 +153,9 @@ object Scope {
    * @return A new scope.
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
-    generators: Vector[Generator],
+    generators: List[Generator],
     children: (Select, Scope[_ <: AnyRef])*
-  ): Nested[T] = apply(DefaultIndexed, generators, children.toVector: _*)
+  ): Nested[T] = apply(DefaultIndexed, generators, children.toList: _*)
 
   /**
    * Creates a scope with asset generators and all children using the specified child scope.
@@ -168,7 +168,7 @@ object Scope {
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     indexed: Boolean,
-    generators: Vector[Generator],
+    generators: List[Generator],
     children: Scope[_ <: AnyRef]
   ): Nested[T] = apply(indexed, generators, Select.All -> children)
 
@@ -183,9 +183,9 @@ object Scope {
    */
   def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
     indexed: Boolean,
-    generators: Vector[Generator],
+    generators: List[Generator],
     children: (Select, Scope[_ <: AnyRef])*
-  ): Nested[T] = Nested(indexed, generators, children.toVector)
+  ): Nested[T] = Nested(indexed, generators, children.toList)
 
   /**
    * The base class for scope implementations.
@@ -215,13 +215,22 @@ object Scope {
    */
   case class Nested[T <: AnyRef : ClassTag : Decoder : Publisher](
     indexed: Boolean,
-    generators: Vector[Generator],
-    children: Vector[(Select, Scope[_ <: AnyRef])]
+    generators: List[Generator],
+    children: List[(Select, Scope[_ <: AnyRef])]
   ) extends Base[T] {
 
     /* Extend this type by dropping the generators. */
     override def extended: Nested[T] =
-      if (generators.isEmpty) this else copy(generators = Vector.empty)
+      if (generators.isEmpty) this else copy(generators = Nil)
+
+    /**
+     * Converts this scope to an aliased scope with the specified path.
+     *
+     * @param path The path that this scope is found at.
+     * @return An aliased view of this scope.
+     */
+    def toAliased(path: Path): Aliased[T] =
+      Aliased(path, indexed, generators, children)
 
   }
 
@@ -237,13 +246,13 @@ object Scope {
   case class Aliased[T <: AnyRef : ClassTag : Decoder : Publisher](
     path: Path,
     indexed: Boolean,
-    generators: Vector[Generator],
-    children: Vector[(Select, Scope[_ <: AnyRef])]
+    generators: List[Generator],
+    children: List[(Select, Scope[_ <: AnyRef])]
   ) extends Base[T] {
 
     /* Extend this type by converting to a nested scope. */
     override def extended: Nested[T] =
-      Nested(indexed, Vector.empty, children)
+      Nested(indexed, List.empty, children)
 
   }
 
@@ -276,7 +285,7 @@ object Scope {
     def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
       path: Path,
       children: (Select, Scope[_ <: AnyRef])*
-    ): Aliased[T] = Aliased(path, DefaultIndexed, DefaultGenerators, children.toVector)
+    ): Aliased[T] = Aliased(path, DefaultIndexed, DefaultGenerators, children.toList)
 
     /**
      * Creates a possibly indexed scope with all children using the specified child scope.
@@ -306,7 +315,7 @@ object Scope {
       path: Path,
       indexed: Boolean,
       children: (Select, Scope[_ <: AnyRef])*
-    ): Aliased[T] = Aliased(path, indexed, DefaultGenerators, children.toVector)
+    ): Aliased[T] = Aliased(path, indexed, DefaultGenerators, children.toList)
 
     /**
      * Creates an indexed scope with asset generators and all children using the specified child scope.
@@ -319,7 +328,7 @@ object Scope {
      */
     def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
       path: Path,
-      generators: Vector[Generator],
+      generators: List[Generator],
       children: Scope[_ <: AnyRef]
     ): Aliased[T] = apply(path, generators, Select.All -> children)
 
@@ -334,9 +343,9 @@ object Scope {
      */
     def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
       path: Path,
-      generators: Vector[Generator],
+      generators: List[Generator],
       children: (Select, Scope[_ <: AnyRef])*
-    ): Aliased[T] = Aliased(path, DefaultIndexed, generators, children.toVector)
+    ): Aliased[T] = Aliased(path, DefaultIndexed, generators, children.toList)
 
     /**
      * Creates a scope with asset generators and all children using the specified child scope.
@@ -351,7 +360,7 @@ object Scope {
     def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
       path: Path,
       indexed: Boolean,
-      generators: Vector[Generator],
+      generators: List[Generator],
       children: Scope[_ <: AnyRef]
     ): Aliased[T] = apply(path, indexed, generators, Select.All -> children)
 
@@ -368,9 +377,9 @@ object Scope {
     def apply[T <: AnyRef : ClassTag : Decoder : Publisher](
       path: Path,
       indexed: Boolean,
-      generators: Vector[Generator],
+      generators: List[Generator],
       children: (Select, Scope[_ <: AnyRef])*
-    ): Aliased[T] = Aliased(path, indexed, generators, children.toVector)
+    ): Aliased[T] = Aliased(path, indexed, generators, children.toList)
 
   }
 

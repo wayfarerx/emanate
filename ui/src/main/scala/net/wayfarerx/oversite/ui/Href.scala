@@ -20,6 +20,7 @@ package net.wayfarerx.oversite
 package ui
 
 import language.implicitConversions
+
 import cats.effect.IO
 
 /**

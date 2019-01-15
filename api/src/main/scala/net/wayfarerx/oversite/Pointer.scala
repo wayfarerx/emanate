@@ -20,7 +20,6 @@ package net.wayfarerx.oversite
 
 import collection.immutable.SortedSet
 import reflect.ClassTag
-
 import cats.data.{NonEmptyList, NonEmptySet}
 
 /**
@@ -53,8 +52,7 @@ object Pointer {
   type Script = Script.type
 
   /** The supported assets. */
-  val Assets: Vector[Asset] =
-    Vector(Page, Image, Stylesheet, Script)
+  val Assets: List[Asset] = List(Page, Image, Stylesheet, Script)
 
   /** The index of assets by prefix. */
   lazy val AssetsByPrefix: Map[Name, Asset] =
@@ -331,7 +329,7 @@ object Pointer {
     val empty = Relative(Path.empty)
 
     /** The current prefix. */
-    val current = Relative(Path(Vector(Path.Current)))
+    val current = Relative(Path(Path.Current))
 
     /** The root prefix. */
     val root = Absolute(Location.empty)
@@ -377,7 +375,7 @@ object Pointer {
         }
 
       /* Resolve the path against the location. */
-      override def toLocation(from: Location): Option[Location] = from :++ path
+      override def toLocation(from: Location): Option[Location] = from ++ path
 
       /* Return the path's string. */
       override def toString: String = path.toString

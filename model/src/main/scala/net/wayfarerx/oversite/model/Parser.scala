@@ -123,13 +123,13 @@ object Parser {
    * @param sections The blocks to read sections from.
    * @return The result of the attempt to read all available sections from the specified blocks.
    */
-  private def readSections(sections: Seq[ast.Section]): IO[Vector[Document.Section]] =
+  private def readSections(sections: Seq[ast.Section]): IO[List[Document.Section]] =
     sections match {
       case ast.Section(header, content, _) +: tail => for {
         s <- readSection(header.content, content)
         ss <- readSections(tail)
-      } yield s +: ss
-      case _ => IO.pure(Vector.empty)
+      } yield s :: ss
+      case _ => IO.pure(Nil)
     }
 
   /**
@@ -142,21 +142,21 @@ object Parser {
     case ast.Paragraph(content, _) =>
       readInlines(content) map Markup.Paragraph
     case ast.LiteralBlock(content, _) =>
-      IO.pure(Markup.CodeBlock(Vector(Markup.Text(content))))
+      IO.pure(Markup.CodeBlock(List(Markup.Text(content))))
     case ast.QuotedBlock(content, _, _) =>
       readBlocks(content) map Markup.BlockQuote
     case ast.Rule(_) =>
       IO.pure(Markup.HorizontalRule)
     case ast.EnumList(content, _, _, _) =>
-      ((IO.pure(Vector.empty): IO[Vector[Markup.List.Item]]) /:
+      ((IO.pure(Nil): IO[List[Markup.Listing.Item]]) /:
         content.collect { case ast.EnumListItem(c, _, _, _) => c }) { (result, item) =>
-        result flatMap (r => readBlocks(item) map (i => r :+ Markup.List.Item(i)))
-      } map Markup.List.Ordered
+        result flatMap (r => readBlocks(item) map (i => r :+ Markup.Listing.Item(i)))
+      } map Markup.Listing.Ordered
     case ast.BulletList(content, _, _) =>
-      ((IO.pure(Vector.empty): IO[Vector[Markup.List.Item]]) /:
+      ((IO.pure(Nil): IO[List[Markup.Listing.Item]]) /:
         content.collect { case ast.BulletListItem(c, _, _) => c }) { (result, item) =>
-        result flatMap (r => readBlocks(item) map (i => r :+ Markup.List.Item(i)))
-      } map Markup.List.Unordered
+        result flatMap (r => readBlocks(item) map (i => r :+ Markup.Listing.Item(i)))
+      } map Markup.Listing.Unordered
     case invalid =>
       Problem.raise(s"Unsupported block markup: $invalid.")
   }
@@ -167,9 +167,9 @@ object Parser {
    * @param blocks The blocks to read from.
    * @return The result of the attempt to read multiple block markups from multiple laika blocks.
    */
-  private def readBlocks(blocks: Seq[ast.Block]): IO[Vector[Markup.Block]] = blocks match {
-    case head +: tail => readBlock(head) flatMap (h => readBlocks(tail) map (h +: _))
-    case _ => IO.pure(Vector.empty[Markup.Block])
+  private def readBlocks(blocks: Seq[ast.Block]): IO[List[Markup.Block]] = blocks match {
+    case head +: tail => readBlock(head) flatMap (h => readBlocks(tail) map (h :: _))
+    case _ => IO.pure(Nil)
   }
 
   /**
@@ -182,7 +182,7 @@ object Parser {
     case ast.Text(content, _) =>
       IO.pure(Markup.Text(content))
     case ast.Literal(content, _) =>
-      IO.pure(Markup.Code(Vector(Markup.Text(content))))
+      IO.pure(Markup.Code(List(Markup.Text(content))))
     case ast.Emphasized(content, _) =>
       readInlines(content) map Markup.Emphasized
     case ast.Strong(content, _) =>
@@ -205,9 +205,9 @@ object Parser {
    * @param spans The spans to read from.
    * @return The result of the attempt to read multiple inline markups from multiple laika spans.
    */
-  private def readInlines(spans: Seq[ast.Span]): IO[Vector[Markup.Inline]] = spans match {
-    case head +: tail => readInline(head) flatMap (h => readInlines(tail) map (h +: _))
-    case _ => IO.pure(Vector.empty[Markup.Inline])
+  private def readInlines(spans: Seq[ast.Span]): IO[List[Markup.Inline]] = spans match {
+    case head +: tail => readInline(head) flatMap (h => readInlines(tail) map (h :: _))
+    case _ => IO.pure(Nil)
   }
 
   /**
@@ -218,7 +218,7 @@ object Parser {
    * @param content The content the link contains.
    * @return The result of the attempt to read a link markup item.
    */
-  private def readLink(target: String, title: Option[String], content: Vector[Markup.Inline]): IO[Markup.Link] =
+  private def readLink(target: String, title: Option[String], content: List[Markup.Inline]): IO[Markup.Link] =
     target lastIndexOf '#' match {
       case 0 =>
         IO.pure(Markup.Link.Jump(target substring 1, title, content))

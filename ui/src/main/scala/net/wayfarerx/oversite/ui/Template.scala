@@ -29,7 +29,7 @@ import scalatags.Text.all._
  *
  * @tparam T The type of entity being published.
  */
-trait Template[-T <: AnyRef] extends Publisher[T] {
+trait Template[-T <: AnyRef] extends Publisher[T] with Renderers {
 
   /** The doctype to prepend to the HTML page. */
   def doctype: String = "<!DOCTYPE html>"
@@ -151,7 +151,7 @@ object Template {
      * @param ctx    The context being published in.
      * @return The default content of the `head` tag.
      */
-    private def defaultHeadContent(entity: T)(implicit ctx: Context): IO[Frag] = for {
+    final private def defaultHeadContent(entity: T)(implicit ctx: Context): IO[Frag] = for {
       _metadata <- metadata(entity)
       _image <- _metadata.image map (ctx resolve _ map (Some(_))) getOrElse
         ctx.resolve(Pointer.Image(Pointer.Image.name)).redeem(_ => None, Some(_))
@@ -211,7 +211,7 @@ object Template {
      * @param ctx      The context to resolve pointers with.
      * @return The default assets of the specified type.
      */
-    private def defaultAssetReferences(
+    final private def defaultAssetReferences(
       asset: Pointer.Asset,
       location: Location
     )(

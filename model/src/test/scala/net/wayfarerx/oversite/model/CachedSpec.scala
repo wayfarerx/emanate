@@ -29,14 +29,14 @@ class CachedSpec extends FlatSpec with Matchers {
 
   "Cached" should "lazy load a reference as an effect" in {
     val cached = Cached(IO.pure("str"))
-    cached().unsafeRunSync() shouldBe "str"
-    cached().unsafeRunSync() shouldBe "str"
+    cached.unsafeRunSync() shouldBe "str"
+    cached.unsafeRunSync() shouldBe "str"
   }
 
   "Cached.Soft" should "lazy load a soft reference as an effect" in {
     val cached = Cached.Soft(IO.pure("str"))
-    cached().unsafeRunSync() shouldBe "str"
-    cached().unsafeRunSync() shouldBe "str"
+    cached.unsafeRunSync() shouldBe "str"
+    cached.unsafeRunSync() shouldBe "str"
   }
 
 }

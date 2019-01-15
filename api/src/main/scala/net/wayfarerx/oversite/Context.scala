@@ -78,7 +78,7 @@ trait Context {
    * @tparam T The type of entity to search for.
    * @return The entity pointers that are assignable to the specified type.
    */
-  def search[T <: AnyRef : ClassTag](): IO[Vector[Pointer.Resolved[Pointer.Entity[T]]]]
+  def search[T <: AnyRef : ClassTag](): IO[List[Pointer.Resolved[Pointer.Entity[T]]]]
 
   /**
    * Searches for entity pointers that are assignable to the specified type and satisfy the specified queries.
@@ -87,7 +87,7 @@ trait Context {
    * @param query The query that entities must satisfy.
    * @return The entity pointers that are assignable to the specified type and satisfy the specified queries.
    */
-  def search[T <: AnyRef : ClassTag](query: Query[_ >: T]): IO[Vector[Pointer.Resolved[Pointer.Entity[T]]]]
+  def search[T <: AnyRef : ClassTag](query: Query[_ >: T]): IO[List[Pointer.Resolved[Pointer.Entity[T]]]]
 
   /**
    * Attempts to describe the data associated with the specified entity.

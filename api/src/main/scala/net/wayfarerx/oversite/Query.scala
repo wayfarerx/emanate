@@ -1,7 +1,7 @@
 /*
  * Query.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -90,7 +90,7 @@ object Query {
    */
   case class Related[T <: AnyRef](
     relation: Relation[T],
-    pointers: Vector[Pointer[Pointer.Entity[_ <: AnyRef]]]
+    pointers: List[Pointer[Pointer.Entity[_ <: AnyRef]]]
   ) extends Query[T]
 
   /**
@@ -109,7 +109,7 @@ object Query {
     def apply[T <: AnyRef](
       relation: Relation[T],
       pointers: Pointer[Pointer.Entity[_ <: AnyRef]]*
-    ): Related[T] = Related(relation, pointers.toVector)
+    ): Related[T] = Related(relation, pointers.toList)
 
   }
 

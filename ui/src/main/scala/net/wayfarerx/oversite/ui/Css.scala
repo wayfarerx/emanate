@@ -19,47 +19,60 @@
 package net.wayfarerx.oversite
 package ui
 
+import language.implicitConversions
+
 import cats.effect.IO
 
+import scalacss.defaults.Exports
+import scalacss.internal.{Compose, Env, Renderer}
+import scalacss.internal.mutable.Register.{ErrorHandler, MacroName, NameGen}
+import scalacss.internal.mutable.{Register, Settings}
+
 /**
- * Base type for custom CSS files.
+ * Base type for generated CSS files.
+ *
+ * @param name The name of this generated CSS file.
+ * @param settings The `scalacss` settings to use.
  */
-trait Css extends scalacss.StyleSheet.Inline
+abstract class Css(val name: Name, val settings: Settings = scalacss.devOrProdDefaults)
+  extends scalacss.StyleSheet.Standalone()(settings.cssRegister) with Exports with Settings {
+
+  /* Return the CSS register. */
+  implicit final override val cssRegister: Register = settings.cssRegister
+
+  /** The generator implementation that produces this CSS file's content. */
+  final val generator: Scope.Generator =
+    Scope.Generator(name, Pointer.Stylesheet.css, generate(_) flatMap (s => IO(s getBytes "UTF-8")))
+
+  /* Return the CSS name generator. */
+  final override def cssRegisterNameGen: NameGen = settings.cssRegisterNameGen
+
+  /* Return the CSS name to register as. */
+  final override def cssRegisterMacroName: MacroName = settings.cssRegisterMacroName
+
+  /* Return the CSS error handler functions. */
+  final override def cssRegisterErrorHandler: ErrorHandler = settings.cssRegisterErrorHandler
+
+  /* Return the CSS string renderer. */
+  implicit final override def cssStringRenderer: Renderer[String] = settings.cssStringRenderer
+
+  /* Return the CSS composer. */
+  implicit final override def cssComposition: Compose = settings.cssComposition
+
+  /* Return the CSS environment. */
+  implicit final override def cssEnv: Env = settings.cssEnv
+
+  /** The generate method that produces this CSS file's content. */
+  def generate(context: Context): IO[String] = IO(render[String])
+
+}
 
 /**
  * Factory for CSS generators.
  */
 object Css {
 
-  /**
-   * Creates a named generator for a CSS file.
-   *
-   * @param name The name of the generated CSS file.
-   * @param css  The content of the generated CSS file.
-   * @return A named generator for the CSS file.
-   */
-  def apply(name: Name, css: Css): Scope.Generator = create(name, _ => css)
-
-  /**
-   * Creates a named generator for a contextual CSS file.
-   *
-   * @param name The name of the generated CSS file.
-   * @param css  The contextual content of the generated CSS file.
-   * @return A named generator for the contextual CSS file.
-   */
-  def apply(name: Name)(css: Context => Css): Scope.Generator = create(name, css)
-
-  /**
-   * Creates a named generator for a contextual CSS file.
-   *
-   * @param name The name of the generated CSS file.
-   * @param css  The contextual content of the generated CSS file.
-   * @return A named generator for the contextual CSS file.
-   */
-  final private def create(name: Name, css: Context => Css): Scope.Generator = {
-    val settings = scalacss.devOrProdDefaults
-    import settings._
-    Scope.Generator(name, Pointer.Stylesheet.css, ctx => IO(css(ctx).render[String] getBytes "UTF-8"))
-  }
+  /** Convert all CSS objects into generators. */
+  implicit def cssToGenerator(css: Css): Scope.Generator = css.generator
 
 }

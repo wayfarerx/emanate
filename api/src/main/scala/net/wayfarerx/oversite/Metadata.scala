@@ -1,7 +1,7 @@
 /*
  * Metadata.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,6 @@ package net.wayfarerx.oversite
 case class Metadata(
   name: Name,
   author: Option[Author] = None,
-  description: Vector[Markup.Inline] = Vector.empty,
+  description: List[Markup.Inline] = Nil,
   image: Option[Pointer.Internal[Pointer.Image]] = Some(Pointer.Image(Pointer.Image.name))
 )

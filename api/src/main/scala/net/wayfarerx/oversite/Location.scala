@@ -1,7 +1,7 @@
 /*
  * Location.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,16 +38,17 @@ final class Location private(val path: Path) extends Product1[Path] {
    * @param name The name to extend this location with.
    * @return The extended location.
    */
-  def :+(name: Name): Location = new Location(path :+ name)
+  def :+(name: Name): Location =
+    new Location(path :+ name)
 
   /**
    * Attempts to extend this location with a path.
    *
-   * @param path The path to extend this location with.
+   * @param that The path to extend this location with.
    * @return The extended location.
    */
-  def :++(path: Path): Option[Location] =
-    Location(this.path ++ path)
+  def ++(that: Path): Option[Location] =
+    Location(this.path ++ that)
 
   /**
    * Returns the longest prefix shared between this and that location.
@@ -56,12 +57,12 @@ final class Location private(val path: Path) extends Product1[Path] {
    * @return The longest prefix shared between this and that location.
    */
   def commonPrefixWith(that: Location): Location = {
-    val self = names
-    val other = that.names
+    val self = path.elements
+    val other = that.path.elements
     val max = Math.min(self.length, other.length)
-    new Location(Path(self.take(max) zip other.take(max) takeWhile {
+    new Location(Path(self take max zip other.take(max) takeWhile {
       case (ours, theirs) => ours == theirs
-    } map (_._1): _*))
+    } map (_._1)))
   }
 
   /**
@@ -74,7 +75,7 @@ final class Location private(val path: Path) extends Product1[Path] {
     val common = commonPrefixWith(that)
     Path(
       Vector.fill(path.elements.length - common.path.elements.length)(Path.Parent) ++
-        that.path.elements.drop(common.path.elements.length)
+        that.path.elements.iterator.drop(common.path.elements.length)
     )
   }
 
@@ -86,7 +87,7 @@ final class Location private(val path: Path) extends Product1[Path] {
    */
   def distanceTo(that: Location): Int = {
     val common = commonPrefixWith(that)
-    (path.elements.length - common.path.elements.length) + (that.path.elements.length - common.path.elements.length)
+    path.elements.length - common.path.elements.length + (that.path.elements.length - common.path.elements.length)
   }
 
   /* Check for matching paths. */
@@ -111,7 +112,7 @@ final class Location private(val path: Path) extends Product1[Path] {
 }
 
 /**
- * Facgtory for locations.
+ * Factory for locations.
  */
 object Location extends (Path => Option[Location]) {
 

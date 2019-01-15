@@ -1,7 +1,7 @@
 /*
  * Document.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ package net.wayfarerx.oversite
  * @param content  The main content of this document.
  * @param sections The subsections of this document.
  */
-case class Document(metadata: Metadata, content: Vector[Markup.Block], sections: Vector[Document.Section]) {
+case class Document(metadata: Metadata, content: List[Markup.Block], sections: List[Document.Section]) {
 
   /** The title of this document. */
   def title: String = metadata.name.display
@@ -44,6 +44,6 @@ object Document {
    * @param content  The main content of this section.
    * @param sections The subsections of this section.
    */
-  case class Section(header: Vector[Markup.Inline], content: Vector[Markup.Block], sections: Vector[Section])
+  case class Section(header: List[Markup.Inline], content: List[Markup.Block], sections: List[Section])
 
 }

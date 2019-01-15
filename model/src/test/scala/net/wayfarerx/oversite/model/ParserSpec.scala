@@ -32,58 +32,58 @@ class ParserSpec extends FlatSpec with Matchers {
         Metadata(
           name"valid-document",
           Some(Author(name"wayfarerx")),
-          Vector(Markup.Text("A valid document."))
+          List(Markup.Text("A valid document."))
         ),
-        Vector(Markup.Paragraph(Vector(
+        List(Markup.Paragraph(List(
           Markup.Text("The document content with a "),
-          Markup.Link.Load(Pointer.External(Pointer.Page, "https://wayfarerx.net/"), None, Vector(Markup.Text("link"))),
+          Markup.Link.Load(Pointer.External(Pointer.Page, "https://wayfarerx.net/"), None, List(Markup.Text("link"))),
           Markup.Text(".")
         ))),
-        Vector(
+        List(
           Document.Section(
-            Vector(Markup.Text("Inlines")),
-            Vector(
-              Markup.Paragraph(Vector(Markup.Code(Vector(Markup.Text("code"))))),
-              Markup.Paragraph(Vector(Markup.Code(Vector(Markup.Text("codes"))))),
-              Markup.Paragraph(Vector(Markup.Emphasized(Vector(Markup.Text("emphasis"))))),
-              Markup.Paragraph(Vector(Markup.Strong(Vector(Markup.Text("strong"))))),
-              Markup.Paragraph(Vector(Markup.Image(Pointer.Image("img.gif"), None, None))),
-              Markup.Paragraph(Vector(Markup.Image(Pointer.Image("img.gif"), None, Some("alt")))),
-              Markup.Paragraph(Vector(Markup.Image(Pointer.Image("img.gif"), Some("Img"), Some("alt")))),
-              Markup.Paragraph(Vector(Markup.Link.Jump(
-                "id", None, Vector(Markup.Text("jump"))))),
-              Markup.Paragraph(Vector(Markup.Link.Load(
-                Pointer.Page(Location.empty, "foo.html"), Some("Foo"), Vector(Markup.Text("load"))))),
-              Markup.Paragraph(Vector(Markup.Link.LoadAndJump(
-                Pointer.Page(Path.empty, "foo.html"), "id", None, Vector(Markup.Text("loadAndJump")))))
+            List(Markup.Text("Inlines")),
+            List(
+              Markup.Paragraph(List(Markup.Code(List(Markup.Text("code"))))),
+              Markup.Paragraph(List(Markup.Code(List(Markup.Text("codes"))))),
+              Markup.Paragraph(List(Markup.Emphasized(List(Markup.Text("emphasis"))))),
+              Markup.Paragraph(List(Markup.Strong(List(Markup.Text("strong"))))),
+              Markup.Paragraph(List(Markup.Image(Pointer.Image("img.gif"), None, None))),
+              Markup.Paragraph(List(Markup.Image(Pointer.Image("img.gif"), None, Some("alt")))),
+              Markup.Paragraph(List(Markup.Image(Pointer.Image("img.gif"), Some("Img"), Some("alt")))),
+              Markup.Paragraph(List(Markup.Link.Jump(
+                "id", None, List(Markup.Text("jump"))))),
+              Markup.Paragraph(List(Markup.Link.Load(
+                Pointer.Page(Location.empty, "foo.html"), Some("Foo"), List(Markup.Text("load"))))),
+              Markup.Paragraph(List(Markup.Link.LoadAndJump(
+                Pointer.Page(Path.empty, "foo.html"), "id", None, List(Markup.Text("loadAndJump")))))
             ),
-            Vector.empty
+            List.empty
           ),
           Document.Section(
-            Vector(Markup.Text("Blocks")),
-            Vector(
-              Markup.CodeBlock(Vector(Markup.Text("code block"))),
-              Markup.BlockQuote(Vector(Markup.Paragraph(Vector(Markup.Text("block quote"))))),
+            List(Markup.Text("Blocks")),
+            List(
+              Markup.CodeBlock(List(Markup.Text("code block"))),
+              Markup.BlockQuote(List(Markup.Paragraph(List(Markup.Text("block quote"))))),
               Markup.HorizontalRule,
-              Markup.List.Ordered(Vector(
-                Markup.List.Item(Vector(Markup.Paragraph(Vector(Markup.Text("Ordered"))))),
-                Markup.List.Item(Vector(Markup.Paragraph(Vector(Markup.Text("List")))))
+              Markup.Listing.Ordered(List(
+                Markup.Listing.Item(List(Markup.Paragraph(List(Markup.Text("Ordered"))))),
+                Markup.Listing.Item(List(Markup.Paragraph(List(Markup.Text("List")))))
               )),
-              Markup.List.Unordered(Vector(
-                Markup.List.Item(Vector(Markup.Paragraph(Vector(Markup.Text("Unordered"))))),
-                Markup.List.Item(Vector(Markup.Paragraph(Vector(Markup.Text("List")))))
+              Markup.Listing.Unordered(List(
+                Markup.Listing.Item(List(Markup.Paragraph(List(Markup.Text("Unordered"))))),
+                Markup.Listing.Item(List(Markup.Paragraph(List(Markup.Text("List")))))
               ))
             ),
-            Vector(Document.Section(
-              Vector(Markup.Text("Subsection")),
-              Vector(Markup.Paragraph(Vector(Markup.Text("subsection content")))),
-              Vector.empty
+            List(Document.Section(
+              List(Markup.Text("Subsection")),
+              List(Markup.Paragraph(List(Markup.Text("subsection content")))),
+              List.empty
             ))
           ),
           Document.Section(
-            Vector(Markup.Text("End")),
-            Vector.empty,
-            Vector.empty
+            List(Markup.Text("End")),
+            List.empty,
+            List.empty
           )
         )
       )
@@ -97,23 +97,23 @@ class ParserSpec extends FlatSpec with Matchers {
         Metadata(
           name"no-author",
           None,
-          Vector(Markup.Text("No author at all."))
+          List(Markup.Text("No author at all."))
         ),
-        Vector.empty,
-        Vector.empty
+        List.empty,
+        List.empty
       )
     Parser.parse(getClass.getResource("/parser-spec/no-author-again.md")).unsafeRunSync() shouldBe
       Document(
         Metadata(
           name"no-author-again",
           None,
-          Vector(
+          List(
             Markup.Text("No author again. "),
-            Markup.Link.Load(Pointer.External(Pointer.Page, "https://wayfarerx.net/"), None, Vector(Markup.Text("x")))
+            Markup.Link.Load(Pointer.External(Pointer.Page, "https://wayfarerx.net/"), None, List(Markup.Text("x")))
           )
         ),
-        Vector.empty,
-        Vector.empty
+        List.empty,
+        List.empty
       )
     a[Parser.Problem] should be thrownBy
       Parser.parse(getClass.getResource("/parser-spec/no-description.md")).unsafeRunSync()

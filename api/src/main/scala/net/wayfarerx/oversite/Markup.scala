@@ -1,7 +1,7 @@
 /*
  * Markup.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,57 +47,57 @@ object Markup {
    *
    * @param content The inline content.
    */
-  case class Paragraph(content: Vector[Inline]) extends Block
+  case class Paragraph(content: List[Inline]) extends Block
 
   /**
    * A code block of inline markup.
    *
    * @param content The inline content.
    */
-  case class CodeBlock(content: Vector[Inline]) extends Block
+  case class CodeBlock(content: List[Inline]) extends Block
 
   /**
    * A block quote of other blocks.
    *
    * @param content The block content.
    */
-  case class BlockQuote(content: Vector[Block]) extends Block
+  case class BlockQuote(content: List[Block]) extends Block
 
   /**
    * Base type for list markup.
    */
-  sealed trait List extends Block {
+  sealed trait Listing extends Block {
 
     /** The items in this list. */
-    def items: Vector[List.Item]
+    def items: List[Listing.Item]
 
   }
 
   /**
    * Definitions of the supported list types.
    */
-  object List {
+  object Listing {
 
     /**
      * An ordered list.
      *
      * @param items The items in this list.
      */
-    case class Ordered(items: Vector[Item]) extends List
+    case class Ordered(items: List[Item]) extends Listing
 
     /**
      * An unordered list.
      *
      * @param items The items in this list.
      */
-    case class Unordered(items: Vector[Item]) extends List
+    case class Unordered(items: List[Item]) extends Listing
 
     /**
      * A single item in a list.
      *
      * @param content The content of this item.
      */
-    case class Item(content: Vector[Block])
+    case class Item(content: List[Block])
 
   }
 
@@ -132,7 +132,7 @@ object Markup {
    *
    * @param content The code content.
    */
-  case class Code(content: Vector[Inline]) extends Inline {
+  case class Code(content: List[Inline]) extends Inline {
 
     /* Return the stripped content. */
     override def strip: String = content.map(_.strip).mkString
@@ -144,7 +144,7 @@ object Markup {
    *
    * @param content The emphasized content.
    */
-  case class Emphasized(content: Vector[Inline]) extends Inline {
+  case class Emphasized(content: List[Inline]) extends Inline {
 
     /* Return the stripped content. */
     override def strip: String = content.map(_.strip).mkString
@@ -156,7 +156,7 @@ object Markup {
    *
    * @param content The strong content.
    */
-  case class Strong(content: Vector[Inline]) extends Inline {
+  case class Strong(content: List[Inline]) extends Inline {
 
     /* Return the stripped content. */
     override def strip: String = content.map(_.strip).mkString
@@ -186,7 +186,7 @@ object Markup {
     def title: Option[String]
 
     /** The content of this link. */
-    def content: Vector[Inline]
+    def content: List[Inline]
 
     /* Return the stripped content. */
     final override def strip: String = content.map(_.strip).mkString
@@ -205,7 +205,7 @@ object Markup {
      * @param title    The optional title.
      * @param content  The content of this link.
      */
-    case class Jump(fragment: String, title: Option[String], content: Vector[Inline]) extends Link
+    case class Jump(fragment: String, title: Option[String], content: List[Inline]) extends Link
 
     /**
      * A link that loads a different resource.
@@ -214,7 +214,7 @@ object Markup {
      * @param title   The optional title.
      * @param content The content of this link.
      */
-    case class Load(pointer: Pointer[Pointer.Type], title: Option[String], content: Vector[Inline]) extends Link
+    case class Load(pointer: Pointer[Pointer.Type], title: Option[String], content: List[Inline]) extends Link
 
     /**
      * A link that loads a different resource.
@@ -228,7 +228,7 @@ object Markup {
       pointer: Pointer[Pointer.Type],
       fragment: String,
       title: Option[String],
-      content: Vector[Inline]
+      content: List[Inline]
     ) extends Link
 
   }

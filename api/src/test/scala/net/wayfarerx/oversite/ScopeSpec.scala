@@ -1,7 +1,7 @@
 /*
  * ScopeSpec.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,18 +48,18 @@ class ScopeSpec extends FlatSpec with Matchers {
     val scope2 = Scope[String](scope1)
     val scope3 = Scope[String](indexed = false, Scope.Select() -> scope1)
     val scope4 = Scope[String](indexed = false, scope1)
-    val scope5 = Scope[String](Vector(generator1), Scope.Select.Matching(name4) -> scope1)
-    val scope6 = Scope[String](Vector(generator2), scope1)
-    val scope7 = Scope[String](indexed = false, Vector(generator1))
-    val scope8 = Scope[String](indexed = false, Vector(generator2), scope1)
-    scope1 shouldBe Scope.Nested(indexed = true, Vector.empty, Vector.empty)
-    scope2 shouldBe Scope.Nested(indexed = true, Vector.empty, Vector(Scope.Select.All -> scope1))
-    scope3 shouldBe Scope.Nested(indexed = false, Vector.empty, Vector(Scope.Select.All -> scope1))
-    scope4 shouldBe Scope.Nested(indexed = false, Vector.empty, Vector(Scope.Select.All -> scope1))
-    scope5 shouldBe Scope.Nested(indexed = true, Vector(generator1), Vector(Scope.Select(name4) -> scope1))
-    scope6 shouldBe Scope.Nested(indexed = true, Vector(generator2), Vector(Scope.Select.All -> scope1))
-    scope7 shouldBe Scope.Nested(indexed = false, Vector(generator1), Vector.empty)
-    scope8 shouldBe Scope.Nested(indexed = false, Vector(generator2), Vector(Scope.Select.All -> scope1))
+    val scope5 = Scope[String](List(generator1), Scope.Select.Matching(name4) -> scope1)
+    val scope6 = Scope[String](List(generator2), scope1)
+    val scope7 = Scope[String](indexed = false, List(generator1))
+    val scope8 = Scope[String](indexed = false, List(generator2), scope1)
+    scope1 shouldBe Scope.Nested(indexed = true, List.empty, List.empty)
+    scope2 shouldBe Scope.Nested(indexed = true, List.empty, List(Scope.Select.All -> scope1))
+    scope3 shouldBe Scope.Nested(indexed = false, List.empty, List(Scope.Select.All -> scope1))
+    scope4 shouldBe Scope.Nested(indexed = false, List.empty, List(Scope.Select.All -> scope1))
+    scope5 shouldBe Scope.Nested(indexed = true, List(generator1), List(Scope.Select(name4) -> scope1))
+    scope6 shouldBe Scope.Nested(indexed = true, List(generator2), List(Scope.Select.All -> scope1))
+    scope7 shouldBe Scope.Nested(indexed = false, List(generator1), List.empty)
+    scope8 shouldBe Scope.Nested(indexed = false, List(generator2), List(Scope.Select.All -> scope1))
     scope1(name1) shouldBe scope1
     scope1(name2) shouldBe scope1
     scope2(name1) shouldBe scope1
@@ -84,18 +84,18 @@ class ScopeSpec extends FlatSpec with Matchers {
     val scope2 = Scope.Aliased[String](path, scope1)
     val scope3 = Scope.Aliased[String](path, indexed = false, Scope.Select() -> scope1)
     val scope4 = Scope.Aliased[String](path, indexed = false, scope1)
-    val scope5 = Scope.Aliased[String](path, Vector(generator1), Scope.Select.Matching(name4) -> scope1)
-    val scope6 = Scope.Aliased[String](path, Vector(generator2), scope1)
-    val scope7 = Scope.Aliased[String](path, indexed = false, Vector(generator1))
-    val scope8 = Scope.Aliased[String](path, indexed = false, Vector(generator2), scope1)
-    scope1 shouldBe Scope.Aliased(path, indexed = true, Vector.empty, Vector.empty)
-    scope2 shouldBe Scope.Aliased(path, indexed = true, Vector.empty, Vector(Scope.Select.All -> scope1))
-    scope3 shouldBe Scope.Aliased(path, indexed = false, Vector.empty, Vector(Scope.Select.All -> scope1))
-    scope4 shouldBe Scope.Aliased(path, indexed = false, Vector.empty, Vector(Scope.Select.All -> scope1))
-    scope5 shouldBe Scope.Aliased(path, indexed = true, Vector(generator1), Vector(Scope.Select(name4) -> scope1))
-    scope6 shouldBe Scope.Aliased(path, indexed = true, Vector(generator2), Vector(Scope.Select.All -> scope1))
-    scope7 shouldBe Scope.Aliased(path, indexed = false, Vector(generator1), Vector.empty)
-    scope8 shouldBe Scope.Aliased(path, indexed = false, Vector(generator2), Vector(Scope.Select.All -> scope1))
+    val scope5 = Scope.Aliased[String](path, List(generator1), Scope.Select.Matching(name4) -> scope1)
+    val scope6 = Scope.Aliased[String](path, List(generator2), scope1)
+    val scope7 = Scope.Aliased[String](path, indexed = false, List(generator1))
+    val scope8 = Scope.Aliased[String](path, indexed = false, List(generator2), scope1)
+    scope1 shouldBe Scope.Aliased(path, indexed = true, List.empty, List.empty)
+    scope2 shouldBe Scope.Aliased(path, indexed = true, List.empty, List(Scope.Select.All -> scope1))
+    scope3 shouldBe Scope.Aliased(path, indexed = false, List.empty, List(Scope.Select.All -> scope1))
+    scope4 shouldBe Scope.Aliased(path, indexed = false, List.empty, List(Scope.Select.All -> scope1))
+    scope5 shouldBe Scope.Aliased(path, indexed = true, List(generator1), List(Scope.Select(name4) -> scope1))
+    scope6 shouldBe Scope.Aliased(path, indexed = true, List(generator2), List(Scope.Select.All -> scope1))
+    scope7 shouldBe Scope.Aliased(path, indexed = false, List(generator1), List.empty)
+    scope8 shouldBe Scope.Aliased(path, indexed = false, List(generator2), List(Scope.Select.All -> scope1))
     val extended = Scope.Nested(scope1.indexed, scope1.generators, scope1.children)
     scope1(name1) shouldBe extended
     scope1(name2) shouldBe extended

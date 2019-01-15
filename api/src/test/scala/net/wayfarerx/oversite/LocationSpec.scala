@@ -1,7 +1,7 @@
 /*
  * LocationSpec.scala
  *
- * Copyright 2018 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
+ * Copyright 2018-2019 wayfarerx <x@wayfarerx.net> (@thewayfarerx)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,10 +40,10 @@ class LocationSpec extends FlatSpec with Matchers {
     Location.resolved(Path("a")).names shouldBe Vector(name"a")
     Location.empty :+ name"b" shouldBe Location.resolved(Path("b"))
     Location.resolved(Path("a")) :+ name"b" shouldBe Location.resolved(Path("a/b"))
-    Location.empty :++ Path("b/c") shouldBe Some(Location.resolved(Path("b/c")))
-    Location.resolved(Path("a")) :++ Path("b/c") shouldBe Some(Location.resolved(Path("a/b/c")))
-    Location.empty :++ Path("..") shouldBe None
-    Location.resolved(Path("a")) :++ Path("../..") shouldBe None
+    Location.empty ++ Path("b/c") shouldBe Some(Location.resolved(Path("b/c")))
+    Location.resolved(Path("a")) ++ Path("b/c") shouldBe Some(Location.resolved(Path("a/b/c")))
+    Location.empty ++ Path("..") shouldBe None
+    Location.resolved(Path("a")) ++ Path("../..") shouldBe None
   }
 
   it should "calculate common prefixes as well as distances and paths between locations" in {

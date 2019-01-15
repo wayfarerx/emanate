@@ -216,7 +216,7 @@ object Resources {
         }
 
         load(classLoader.getURLs.toVector)
-      }()
+      }
 
       /* Try to list resources from the underlying class loader's URLs and the parent resources. */
       override def list(directory: Path.Regular): IO[Vector[String]] =

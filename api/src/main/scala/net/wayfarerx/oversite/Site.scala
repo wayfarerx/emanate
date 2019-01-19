@@ -32,7 +32,10 @@ trait Site[T <: AnyRef] {
   /** The base URL to append absolute paths to. */
   def baseUrl: String
 
-  /** The entry point for the scopes that describe this site. */
+  /** The scope that describes this site. */
   def scopes: Scope[T]
+
+  /** The icon that describes this site. */
+  def icon: Pointer[Pointer.Image] = Pointer.Image(name"icon")
 
 }

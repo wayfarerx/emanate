@@ -798,6 +798,9 @@ object Pointer {
     /** PNG images. */
     val png: Asset.Variant = Asset.Variant.one(this, name"png")
 
+    /** ICO images. */
+    val ico: Asset.Variant = Asset.Variant.one(this, name"ico")
+
     /* Define the asset type. */
     override type AssetType = Image
 

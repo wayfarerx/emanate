@@ -69,7 +69,7 @@ object Template {
      * Generates the content of the `html` tag.
      *
      * @param entity The entity to generate for.
-     * @param ctx The context to generate in.
+     * @param ctx    The context to generate in.
      * @return The content of the `html` tag.
      */
     protected def htmlContent(entity: T)(implicit ctx: Context): IO[(TypedTag[String], TypedTag[String])] =
@@ -79,7 +79,7 @@ object Template {
      * Generates the `head` tag.
      *
      * @param entity The entity to generate for.
-     * @param ctx The context to generate in.
+     * @param ctx    The context to generate in.
      * @return The `head` tag.
      */
     protected def toHead(entity: T)(implicit ctx: Context): IO[TypedTag[String]] =
@@ -89,7 +89,7 @@ object Template {
      * Generates the content of the `head` tag.
      *
      * @param entity The entity to generate for.
-     * @param ctx The context to generate in.
+     * @param ctx    The context to generate in.
      * @return The content of the `head` tag.
      */
     protected def headContent(entity: T)(implicit ctx: Context): IO[Frag] =
@@ -99,7 +99,7 @@ object Template {
      * Generates the `body` tag.
      *
      * @param entity The entity to generate for.
-     * @param ctx The context to generate in.
+     * @param ctx    The context to generate in.
      * @return The `body` tag.
      */
     protected def toBody(entity: T)(implicit ctx: Context): IO[TypedTag[String]] =
@@ -156,6 +156,7 @@ object Template {
       _image <- _metadata.image map (ctx resolve _ map (Some(_))) getOrElse
         ctx.resolve(Pointer.Image(Pointer.Image.name)).redeem(_ => None, Some(_))
       _alt <- _image map ctx.alt getOrElse IO.pure(None)
+      _favicon <- ctx.resolve(ctx.site.icon)
       _stylesheets <- stylesheets(entity)
       _scripts <- scripts(entity)
     } yield {
@@ -187,6 +188,10 @@ object Template {
         meta(name := "twitter:card", content := src map (_ => "summary_large_image") getOrElse "summary"),
         ctx.site.owner.twitter map (t => meta(name := "twitter:site", content := t)),
         author.twitter map (t => meta(name := "twitter:creator", content := t)),
+        link(
+          rel := "shortcut icon",
+          href := _favicon.href
+        ),
         _stylesheets map (ref => link(
           rel := "stylesheet",
           href := ref.href.value,

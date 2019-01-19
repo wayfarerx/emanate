@@ -68,39 +68,57 @@ object Server {
     shift: ContextShift[IO],
     timer: Timer[IO]
   ): IO[ExitCode] =
-    IO(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())).bracket { blockingExecutionContext =>
-      BlazeServerBuilder[IO].bindHttp(
-        if (port < 0) ServerBuilder.DefaultHttpPort else port,
-        if (host.isEmpty) ServerBuilder.DefaultHost else host
-      ).withHttpApp(HttpRoutes.of[IO] {
-        case request@GET -> path =>
-          root.resolve(Pointer.parse(path.toList.mkString("/", "/", ""))).redeemWith(_ => NotFound(), {
-            case Pointer.Target(tpe, prefix, suffix) =>
-              root.index flatMap { index =>
-                prefix.toLocation(root.location) flatMap (index(_)) map { node =>
-                  tpe match {
-                    case _: Pointer.Asset => node.readAsset(suffix.toString).redeemWith(_ => NotFound(), _.fold(
-                      data => suffix.toString lastIndexOf '.' match {
-                        case i if i >= 0 => MediaType forExtension suffix.toString.substring(i + 1) map { media =>
-                          Ok(data) map (_.withContentType(`Content-Type`(media)))
-                        } getOrElse NotFound()
-                        case _ => NotFound()
-                      },
-                      StaticFile.fromURL(_, blockingExecutionContext, Some(request)) getOrElseF NotFound()
-                    ))
-                    case _ => node.read() flatMap { published =>
-                      Ok(published getBytes "UTF-8")
-                        .map(_.withContentType(`Content-Type`(MediaType.all("text" -> "html"), Charset.`UTF-8`)))
-                    }
+    IO(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())).bracket {
+      blockingExecutionContext =>
+        BlazeServerBuilder[IO].bindHttp(
+          if (port < 0) ServerBuilder.DefaultHttpPort else port,
+          if (host.isEmpty) ServerBuilder.DefaultHost else host
+        ).withHttpApp(HttpRoutes.of[IO] {
+          case request@GET -> path =>
+            redeeming {
+              redeeming(root.resolve(Pointer.parse(path.toList.mkString("/", "/", "")))) {
+                case Pointer.Target(tpe, prefix, suffix) =>
+                  root.index flatMap { index =>
+                    prefix.toLocation(root.location) flatMap (index(_)) map { node =>
+                      tpe match {
+                        case _: Pointer.Asset =>
+                          redeeming(node.readAsset(suffix.toString)) {
+                            case Left(data) => suffix.toString lastIndexOf '.' match {
+                              case i if i >= 0 => MediaType forExtension suffix.toString.substring(i + 1) map { media =>
+                                Ok(data) map (_.withContentType(`Content-Type`(media)))
+                              } getOrElse NotFound()
+                              case _ => MediaType forExtension Pointer.Page.html.extension.normal map { media =>
+                                Ok(data) map (_.withContentType(`Content-Type`(media)))
+                              } getOrElse NotFound()
+                            }
+                            case Right(url) =>
+                              StaticFile.fromURL(url, blockingExecutionContext, Some(request)) getOrElseF NotFound()
+                          }(_ => NotFound())
+                        case _ => node.read() flatMap { published =>
+                          Ok(published getBytes "UTF-8")
+                            .map(_.withContentType(`Content-Type`(MediaType.all("text" -> "html"), Charset.`UTF-8`)))
+                        }
+                      }
+                    } getOrElse NotFound()
                   }
-                } getOrElse NotFound()
-              }
-            case _ => NotFound()
-          }).redeemWith(_ => InternalServerError(), IO.pure)
-      }.orNotFound).serve.compile.lastOrError
+                case _ => NotFound()
+              }(_ => NotFound())
+            }(IO.pure)(msg => InternalServerError(msg))
+        }.orNotFound).serve.compile.lastOrError
     }(blockingExecutionContext => IO({
       blockingExecutionContext.shutdown()
       blockingExecutionContext.awaitTermination(wait.length, wait.unit)
     }))
+
+  private def redeeming[T, U](op: IO[T])(continue: T => IO[U])(redemption: String => IO[U]): IO[U] =
+    op.redeemWith(
+      t => for {
+        _ <- IO(t.printStackTrace()).redeem(_ => (), identity)
+        result <- redemption(
+          (s"${t.getClass.getName}: ${t.getMessage}" +: t.getStackTrace.map("  " + _.toString)) mkString "\r\n"
+        )
+      } yield result,
+      continue
+    )
 
 }

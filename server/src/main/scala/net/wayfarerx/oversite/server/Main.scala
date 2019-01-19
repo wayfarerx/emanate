@@ -40,8 +40,8 @@ object Main extends IOApp {
   private val arguments = new scopt.OptionParser[Configuration](name) {
     head(name, "v0")
     arg[String]("<site>") action ((s, c) => c.copy(site = s)) text "the name of the class that implements Site"
-    arg[Int]("[port]").optional action ((p, c) => c.copy(port = p)) text "the port to serve on"
-    arg[String]("[host]").optional action ((h, c) => c.copy(host = h)) text "the hostname to serve on"
+    arg[Int]("port").optional action ((p, c) => c.copy(port = p)) text "the port to serve on"
+    arg[String]("host").optional action ((h, c) => c.copy(host = h)) text "the hostname to serve on"
   }
 
   /* Parse the command-line arguments and run the server. */

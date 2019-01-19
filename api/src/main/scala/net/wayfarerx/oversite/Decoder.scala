@@ -31,9 +31,28 @@ trait Decoder[+T <: AnyRef] {
    * Attempts to decode an entity from a document.
    *
    * @param document The document to decode.
-   * @param ctx The context to decode in.
+   * @param ctx      The context to decode in.
    * @return The result of attempting to decode an entity from a document.
    */
   def decode(document: Document)(implicit ctx: Context): IO[T]
+
+}
+
+/**
+ * Factory for common decoders.
+ */
+object Decoder {
+
+  /**
+   * Returns a decoder for the specified entity.
+   *
+   * @tparam T The type of entity being decoded.
+   * @param f The function that decodes an entity.
+   * @return A decoder for the specified entity.
+   */
+  def apply[T <: AnyRef](f: PartialFunction[Document, T]): Decoder[T] = new Decoder[T] {
+    override def decode(document: Document)(implicit context: Context): IO[T] =
+      f lift document map IO.pure getOrElse IO.raiseError(new IllegalArgumentException(s"Invalid document"))
+  }
 
 }

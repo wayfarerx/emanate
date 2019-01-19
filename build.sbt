@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.4.0",
+  version := "0.4.1",
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
   libraryDependencies += ScalaTest % Test
 )
@@ -42,7 +42,7 @@ lazy val server = (project in file("server")).
       Http4sDsl,
       Http4sBlazeServer
     )
-  ).dependsOn(model)
+  ).dependsOn(model, ui % Test)
 
 /*
 lazy val generator = (project in file("generator")).

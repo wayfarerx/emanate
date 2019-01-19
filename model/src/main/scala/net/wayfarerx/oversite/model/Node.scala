@@ -26,7 +26,6 @@ import collection.JavaConverters._
 import io.{Codec, Source}
 import language.existentials
 import reflect.ClassTag
-import util.control.NoStackTrace
 
 import cats.effect.IO
 
@@ -367,9 +366,7 @@ sealed trait Node[T <: AnyRef] extends Context {
         if (node.generates(path, file).nonEmpty) IO.pure((node, path, file))
         else resources find node.source.toString + path + file flatMap {
           _ map (_ => IO.pure((node, path, file))) getOrElse[IO[(Node[_ <: AnyRef], Path, String)]]
-            Problem(s"Cannot find asset ${
-              node.location
-            }$path$file")
+            Problem(s"Cannot find asset ${node.location}$path$file")
         }
     }
 
@@ -415,9 +412,7 @@ sealed trait Node[T <: AnyRef] extends Context {
 
           searching(start) flatMap {
             case Some(result) => IO.pure(result)
-            case None => Problem(s"Cannot find ${
-              asset.name
-            } asset $from?$query")
+            case None => Problem(s"Cannot find ${asset.name} asset $from?$query")
           }
       }
   }
@@ -480,8 +475,14 @@ sealed trait Node[T <: AnyRef] extends Context {
    * @return The content of a member asset.
    */
   def readAsset(asset: String): IO[Either[Array[Byte], URL]] = {
-    val (path, file) = Path.parse(asset)
-    file flatMap (generates(path, _)) map (_ generate this map (Left(_))) getOrElse Problem(s"Cannot read $source$asset")
+    val (path, fileOpt) = Path.parse(asset)
+    fileOpt map { file =>
+      generates(path, file) map (g => g generate this map (Left(_))) getOrElse {
+        resources.find(source ++ path + file).flatMap(_ map (u => IO.pure(Right(u))) getOrElse {
+          Problem(s"Cannot read asset $source$asset")
+        })
+      }
+    } getOrElse Problem(s"Cannot read asset $source$asset")
   }
 
 }
@@ -699,7 +700,7 @@ object Node {
    *
    * @param message The message that describes this problem.
    */
-  final class Problem(message: String) extends RuntimeException(message) with NoStackTrace
+  final class Problem(message: String) extends RuntimeException(message)
 
   /**
    * Factory for parsing problems.

@@ -45,13 +45,17 @@ object Main extends IOApp {
   }
 
   /* Parse the command-line arguments and run the server. */
-  override def run(args: List[String]): IO[ExitCode] =
-    arguments.parse(args, Configuration()) map { config =>
-      Node.Root[AnyRef](config.site).flatMap(r => Server(r, config.host, config.port)).redeemWith(
-        t => IO(logger.error("Oversite quit unexpectedly.", t)).redeem(_ => ExitCode.Error, _ => ExitCode.Error),
-        IO.pure
-      )
-    } getOrElse IO.pure(ExitCode.Error)
+  override def run(args: List[String]): IO[ExitCode] = {
+    for {
+      input <- IO(arguments.parse(args, Configuration()))
+      config <- input map IO.pure getOrElse IO.raiseError(new IllegalArgumentException(args mkString " "))
+      root <- Node.Root[AnyRef](config.site)
+      result <- Server(root, config.host, config.port)
+    } yield result
+  }.redeemWith(
+    t => IO(logger.error("Oversite quit unexpectedly.", t)).redeem(_ => ExitCode.Error, _ => ExitCode.Error),
+    IO.pure
+  )
 
   /**
    * The configuration derived from the command-line arguments.

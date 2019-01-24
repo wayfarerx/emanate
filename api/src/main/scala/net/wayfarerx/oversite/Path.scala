@@ -236,7 +236,12 @@ object Path {
    *
    * @param string A regular path string.
    */
-  final class Regular private(val string: String) extends AnyVal
+  final class Regular private(val string: String) extends AnyVal {
+
+    /* Return the underlying string. */
+    override def toString: String = string
+
+  }
 
   /**
    * Factory for regular path strings.

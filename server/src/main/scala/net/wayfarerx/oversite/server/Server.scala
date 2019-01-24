@@ -35,7 +35,7 @@ import org.http4s.server.blaze.BlazeServerBuilder
 import model.Node
 
 /**
- * The application that serves an oversite site.
+ * The application that serves an oversite website.
  */
 object Server {
 
@@ -82,7 +82,7 @@ object Server {
                     prefix.toLocation(root.location) flatMap (index(_)) map { node =>
                       tpe match {
                         case _: Pointer.Asset =>
-                          redeeming(node.readAsset(suffix.toString)) {
+                          redeeming(node.asInstanceOf[Node.Parent[_]].readAsset(suffix.toString)) {
                             case Left(data) => suffix.toString lastIndexOf '.' match {
                               case i if i >= 0 => MediaType forExtension suffix.toString.substring(i + 1) map { media =>
                                 Ok(data) map (_.withContentType(`Content-Type`(media)))

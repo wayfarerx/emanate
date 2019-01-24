@@ -20,4 +20,6 @@ object Dependencies {
   lazy val Http4sDsl = "org.http4s" %% "http4s-dsl" % Http4sVersion
   lazy val Http4sBlazeServer = "org.http4s" %% "http4s-blaze-server" % Http4sVersion
 
+  lazy val CommonsIO = "commons-io" % "commons-io" % "2.6"
+
 }

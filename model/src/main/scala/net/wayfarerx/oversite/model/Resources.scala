@@ -47,7 +47,7 @@ trait Resources {
    * @param resource The name of the resource to look up.
    * @return The URLs provided for a specific resource.
    */
-  def detect(resource: Path.Regular): IO[Vector[URL]]
+  def detect(resource: Path.Regular): IO[List[URL]]
 
   /**
    * Attempts to list the resources contained in a directory.
@@ -55,7 +55,7 @@ trait Resources {
    * @param directory The directory to list the immediate children of.
    * @return The result of attempting to list the resources contained in a directory.
    */
-  def list(directory: Path.Regular): IO[Vector[String]]
+  def list(directory: Path.Regular): IO[List[String]]
 
   /**
    * Attempts to load a class from this collection of resources.
@@ -82,12 +82,12 @@ object Resources {
       IO.pure(None)
 
     /* Cannot load resources from the bootstrap class loader. */
-    override def detect(resource: Path.Regular): IO[Vector[URL]] =
-      IO.pure(Vector())
+    override def detect(resource: Path.Regular): IO[List[URL]] =
+      IO.pure(Nil)
 
     /* Cannot load resources from the bootstrap class loader. */
-    override def list(directory: Path.Regular): IO[Vector[String]] =
-      IO.pure(Vector())
+    override def list(directory: Path.Regular): IO[List[String]] =
+      IO.pure(Nil)
 
     /* Load a class from the bootstrap class loader. */
     override def load(className: String): IO[Class[_]] =
@@ -113,8 +113,8 @@ object Resources {
       select(resource) map (r => IO(Option(classLoader.getResource(r)))) getOrElse IO.pure(None)
 
     /* Detect resources in the underlying class loader. */
-    final override def detect(resource: Path.Regular): IO[Vector[URL]] =
-      select(resource) map (r => IO(classLoader.getResources(r).asScala.toVector)) getOrElse IO.pure(Vector())
+    final override def detect(resource: Path.Regular): IO[List[URL]] =
+      select(resource) map (r => IO(classLoader.getResources(r).asScala.toList)) getOrElse IO.pure(Nil)
 
     /* Load a class from the underlying class loader. */
     final override def load(className: String): IO[Class[_]] =
@@ -171,22 +171,22 @@ object Resources {
       override type ClassLoaderType = ClassLoader
 
       /* Try to list resources in the underlying class loader. */
-      override def list(directory: Path.Regular): IO[Vector[String]] =
+      override def list(directory: Path.Regular): IO[List[String]] =
         select(directory) map (Path(_)) map { path =>
           IO(Option(classLoader.getResourceAsStream(path.toString))).bracket {
             _ map { stream =>
               for {
-                children <- IO(Source.fromInputStream(stream, UTF8).getLines.map(_.trim).filterNot(_.isEmpty).toVector)
-                results <- (IO.pure(Vector.empty[String]) /: children) { (previous, child) =>
+                children <- IO(Source.fromInputStream(stream, UTF8).getLines.map(_.trim).filterNot(_.isEmpty))
+                results <- (IO.pure(Nil: List[String]) /: children) { (previous, child) =>
                   previous flatMap { collected =>
                     val resource = path + child
                     find(resource) map (_ map (_ => collected :+ resource) getOrElse collected)
                   }
                 }
               } yield results
-            } getOrElse IO.pure(Vector.empty)
+            } getOrElse IO.pure(Nil)
           }(s => IO(s foreach (_.close())))
-        } getOrElse IO.pure(Vector.empty)
+        } getOrElse IO.pure(Nil)
 
     }
 
@@ -207,35 +207,35 @@ object Resources {
       private val entries = Cached {
 
         /* Qualify all the URLs. */
-        def load(remaining: Vector[URL]): IO[Vector[Entry]] = remaining match {
+        def load(remaining: List[URL]): IO[List[Entry]] = remaining match {
           case head +: tail => for {
             h <- Entry(head)
             t <- load(tail)
-          } yield h map (_ +: t) getOrElse t
-          case _ => IO.pure(Vector.empty)
+          } yield h map (_ :: t) getOrElse t
+          case _ => IO.pure(Nil)
         }
 
-        load(classLoader.getURLs.toVector)
+        load(classLoader.getURLs.toList)
       }
 
       /* Try to list resources from the underlying class loader's URLs and the parent resources. */
-      override def list(directory: Path.Regular): IO[Vector[String]] =
+      override def list(directory: Path.Regular): IO[List[String]] =
         select(directory) map (Path(_)) map { path =>
 
           /* List from each URL. */
-          def process(remaining: Vector[Entry]): IO[Vector[String]] = remaining match {
+          def process(remaining: List[Entry]): IO[List[String]] = remaining match {
             case head +: tail => for {
-              h <- head.list(path)
+              h <- head.list(path) map (_ flatMap (select(_)) map (_.toString))
               t <- process(tail)
-            } yield h ++ t
-            case _ => IO.pure(Vector.empty)
+            } yield h ::: t
+            case _ => IO.pure(Nil)
           }
 
           for {
             inherited <- parent list directory
             provided <- entries flatMap process
-          } yield inherited ++ provided
-        } getOrElse IO.pure(Vector.empty)
+          } yield inherited ::: provided
+        } getOrElse IO.pure(Nil)
 
     }
 
@@ -250,7 +250,7 @@ object Resources {
        * @param directory The path that specifies the directory.
        * @return The contents of the specified directory.
        */
-      def list(directory: Path): IO[Vector[String]]
+      def list(directory: Path): IO[List[String]]
 
     }
 
@@ -286,22 +286,22 @@ object Resources {
       private case class FileEntry(file: JPath) extends Entry {
 
         /* List in the file. */
-        override def list(directory: Path): IO[Vector[String]] = {
+        override def list(directory: Path): IO[List[String]] = {
 
           // Recursively process results.
-          def results(remaining: Vector[JPath]): IO[Vector[String]] = remaining match {
-            case head +: tail => results(tail) map { t =>
-              head.subpath(file.getNameCount, head.getNameCount).toString.replace('\\', '/') +: t
+          def results(remaining: List[JPath]): IO[List[String]] = remaining match {
+            case head +: tail => results(tail) map {
+              head.subpath(file.getNameCount, head.getNameCount).toString.replace('\\', '/') :: _
             }
-            case _ => IO.pure(Vector.empty)
+            case _ => IO.pure(Nil)
           }
 
           for {
             path <- IO(file.resolve(directory.toString))
             okay <- IO(Files.isDirectory(path))
             result <- if (okay) {
-              IO(Files.list(path).iterator.asScala.toVector) flatMap results
-            } else IO.pure(Vector.empty)
+              IO(Files.list(path).iterator.asScala.toList) flatMap results
+            } else IO.pure(Nil)
           } yield result
         }
 
@@ -315,7 +315,7 @@ object Resources {
       private case class JarEntry(jar: JPath) extends Entry {
 
         /* List in the JAR. */
-        override def list(directory: Path): IO[Vector[String]] =
+        override def list(directory: Path): IO[List[String]] =
           IO(new JarFile(jar.toFile)).bracket { jarFile =>
             val prefix = directory.toString
             IO(jarFile.entries.asScala.filter { entry =>
@@ -324,7 +324,7 @@ object Resources {
                 val index = entry.getName.indexOf('/', prefix.length)
                 index < 0 || index == entry.getName.length - 1
               }
-            }.map(_.getName).toVector)
+            }.map(_.getName).toList)
           }(jarFile => IO(jarFile.close()))
 
       }

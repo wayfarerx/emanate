@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.4.3",
+  version := "0.4.4",
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
   libraryDependencies += ScalaTest % Test
 )
@@ -44,18 +44,18 @@ lazy val server = (project in file("server")).
     )
   ).dependsOn(model, ui % Test)
 
-/*
 lazy val generator = (project in file("generator")).
   settings(
     common,
     name := "oversite-generator",
     libraryDependencies ++= Seq(
-      Slf4j,
-      Fs2Core,
-      Fs2Io
+      Scopt,
+      Logback,
+      CommonsIO
     )
-  ).dependsOn(model)
+  ).dependsOn(model, ui % Test)
 
+/*
 lazy val plugin = (project in file("plugin")).
   settings(
     common,

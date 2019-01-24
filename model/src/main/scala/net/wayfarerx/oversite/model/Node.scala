@@ -460,30 +460,17 @@ sealed trait Node[T <: AnyRef] extends Context {
     case Pointer.Prefix.Absolute(l) => Some(l)
   }
 
+  //
+  // External support methods.
+  //
+
   /**
    * Reads the content of the underlying entity.
    *
    * @return The content of the underlying entity.
    */
-  def read(): IO[String] =
+  final def read(): IO[String] =
     entity flatMap scope.publisher.publish
-
-  /**
-   * Reads the content of a member asset.
-   *
-   * @param asset The path to the member asset.
-   * @return The content of a member asset.
-   */
-  def readAsset(asset: String): IO[Either[Array[Byte], URL]] = {
-    val (path, fileOpt) = Path.parse(asset)
-    fileOpt map { file =>
-      generates(path, file) map (g => g generate this map (Left(_))) getOrElse {
-        resources.find(source ++ path + file).flatMap(_ map (u => IO.pure(Right(u))) getOrElse {
-          Problem(s"Cannot read asset $source$asset")
-        })
-      }
-    } getOrElse Problem(s"Cannot read asset $source$asset")
-  }
 
 }
 
@@ -505,8 +492,8 @@ object Node {
     /** The children of this node. */
     final val children: IO[List[Child[_ <: AnyRef]]] = Cached {
 
-      def findNested(remaining: Vector[String]): IO[List[Child[_ <: AnyRef]]] = remaining match {
-        case head +: tail if head.endsWith(".md") && !(head == IndexFile || head.endsWith(s"/$IndexFile")) =>
+      def findNested(remaining: List[String]): IO[List[Child[_ <: AnyRef]]] = remaining match {
+        case head :: tail if head.endsWith(".md") && !(head == IndexFile || head.endsWith(s"/$IndexFile")) =>
           for {
             u <- resources.find(head)
             t <- findNested(tail)
@@ -516,7 +503,7 @@ object Node {
               case _ => None
             }
           } getOrElse t
-        case head +: tail =>
+        case head :: tail =>
           val path = Path(head)
           for {
             u <- resources.find(path + IndexFile)
@@ -546,6 +533,69 @@ object Node {
         })
       } yield nested ++ aliased
     }
+
+    /** The prefixes reserved for children of this node. */
+    final val childPrefixes: IO[List[String]] = children map (_ map (_.name.normal + "/"))
+
+
+    /**
+     * Lists the assets provided by this node.
+     *
+     * @return The assets provided by this node.
+     */
+    final def listAssets(): IO[List[String]] = {
+      val src = source.toString
+
+      def list(container: Path): IO[List[String]] = {
+        val base = src + container
+        for {
+          children <- resources.list(base).redeem(_ => Nil, identity) map (_.filter(_.length > base.length))
+          result <- {
+            val (directories, files) = children partition { child =>
+              child.lastIndexOf('.') <= child.lastIndexOf('/')
+            }
+            descend(directories map (_ drop base.length)) map (files.map(_ drop src.length) ::: _)
+          }
+        } yield result
+      }
+
+      def descend(containers: List[String]): IO[List[String]] = containers match {
+        case head :: tail => for {
+          h <- list(Path(head))
+          t <- descend(tail)
+        } yield h ::: t
+        case _ => IO.pure(Nil)
+      }
+
+      for {
+        reserved <- childPrefixes
+        files <- list(Path.empty)
+      } yield {
+        scope.generators.map { gen =>
+          s"${gen.tpe.asset.prefix map (_ + "/") getOrElse ""}${gen.name}.${gen.tpe.extension}"
+        } ::: files filterNot (r => r == IndexFile || reserved.exists(r.startsWith))
+      }.distinct
+    }
+
+    /**
+     * Reads the content of a member asset.
+     *
+     * @param asset The path to the member asset.
+     * @return The content of a member asset.
+     */
+    final def readAsset(asset: String): IO[Either[Array[Byte], URL]] =
+      childPrefixes flatMap { reserved =>
+        if (reserved exists asset.startsWith) Problem(s"Reserved asset at $source$asset") else {
+          val (path, fileOpt) = Path.parse(asset)
+          fileOpt map { file =>
+            generates(path, file) map (_ generate this map (Left(_))) getOrElse {
+              resources.find(source ++ path + file).flatMap(_ map (u => IO.pure(Right(u))) getOrElse {
+                Problem(s"Cannot find asset at $source$asset")
+              })
+            }
+          } getOrElse Problem(s"Invalid asset at $source$asset")
+        }
+      }
 
   }
 
@@ -693,7 +743,8 @@ object Node {
    * @param name   The name of this branch.
    * @param scope  The scope of this branch.
    */
-  case class Leaf[T <: AnyRef](parent: Parent[_ <: AnyRef], name: Name, scope: Scope[T], resource: URL) extends Child[T]
+  case class Leaf[T <: AnyRef](parent: Parent[_ <: AnyRef], name: Name, scope: Scope[T], resource: URL)
+    extends Child[T]
 
   /**
    * The type of exception produced when parsing problems are encountered.

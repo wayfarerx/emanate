@@ -19,7 +19,7 @@
 package net.wayfarerx.oversite
 package generator
 
-import java.nio.file.{Files, Path => JPath}
+import java.nio.file.{Files, Paths, Path => JPath}
 
 import cats.effect.{ContextShift, ExitCode, IO, Timer}
 
@@ -32,6 +32,9 @@ import model.Node
  */
 object Generator {
 
+  /** The value to use for the default host. */
+  val DefaultDestination: JPath = Paths.get(".")
+
   /**
    * Generates a website from the specified root node.
    *
@@ -43,7 +46,7 @@ object Generator {
    */
   def apply(
     root: Node.Root[_ <: AnyRef],
-    destination: JPath
+    destination: JPath = DefaultDestination
   )(implicit
     shift: ContextShift[IO],
     timer: Timer[IO]

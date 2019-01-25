@@ -53,7 +53,8 @@ object Main extends IOApp {
       input <- IO(arguments.parse(args, Configuration()))
       config <- input map IO.pure getOrElse IO.raiseError(new IllegalArgumentException(args mkString " "))
       root <- Node.Root[AnyRef](config.site)
-      destination <- if (config.destination.isEmpty) IO(Paths get ".") else IO(Paths get config.destination)
+      destination <-
+        if (config.destination.isEmpty) IO(Generator.DefaultDestination) else IO(Paths get config.destination)
       result <- Generator(root, destination)
     } yield result
   }.redeemWith(

@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.4.4",
+  version := "0.5.0",
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
   libraryDependencies += ScalaTest % Test
 )
@@ -54,12 +54,3 @@ lazy val generator = (project in file("generator")).
       CommonsIO
     )
   ).dependsOn(model, ui % Test)
-
-/*
-lazy val plugin = (project in file("plugin")).
-  settings(
-    common,
-    name := "sbt-oversite",
-    libraryDependencies += ScalaTest % Test
-  )
-*/

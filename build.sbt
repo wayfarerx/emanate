@@ -5,7 +5,11 @@ lazy val common = Seq(
   scalaVersion := "2.12.6",
   version := "0.5.0",
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
-  libraryDependencies += ScalaTest % Test
+  libraryDependencies += ScalaTest % Test,
+  publishMavenStyle := false,
+  publishTo := Some(Resolver.url(
+    "WayfarerX Releases", url("s3://software.wayfarerx.net/releases")
+  )(Resolver.ivyStylePatterns))
 )
 
 lazy val api = (project in file("api")).

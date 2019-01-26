@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.6",
-  version := "0.5.1",
+  version := "0.5.2",
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
   libraryDependencies += ScalaTest % Test,
   publishMavenStyle := false,
@@ -14,7 +14,7 @@ lazy val common = Seq(
 
 val root = (project in file(".")).
   settings(
-    publishArtifact := false
+    skip in publish := true
   ).aggregate(api, ui, model, server, generator)
 
 lazy val api = (project in file("api")).

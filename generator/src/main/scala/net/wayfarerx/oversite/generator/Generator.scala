@@ -33,7 +33,7 @@ import model.Node
 object Generator {
 
   /** The value to use for the default host. */
-  val DefaultDestination: JPath = Paths.get(".")
+  val DefaultDestination: JPath = Paths.get("./target/oversite")
 
   /**
    * Generates a website from the specified root node.

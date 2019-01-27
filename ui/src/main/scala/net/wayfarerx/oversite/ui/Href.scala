@@ -26,9 +26,10 @@ import cats.effect.IO
 /**
  * Wrapper around a resolved, context-specific hypertext reference.
  *
- * @param value The resolved, context-specific hypertext reference.
+ * @param value  The resolved, context-specific hypertext reference.
+ * @param source The source of this resolved, context-specific hypertext reference.
  */
-final class Href private(val value: String) extends AnyRef
+case class Href private(value: String, source: Pointer[_ <: Pointer.Type])
 
 /**
  * Factory for resolved, context-specific hypertext references.
@@ -43,6 +44,6 @@ object Href {
    * @return A new resolved, context-specific hypertext reference.
    */
   def apply(pointer: Pointer[_ <: Pointer.Type])(implicit ctx: Context): IO[Href] =
-    ctx.resolve(pointer) map (p => new Href(p.href))
+    ctx.resolve(pointer) map (p => new Href(p.href, p))
 
 }

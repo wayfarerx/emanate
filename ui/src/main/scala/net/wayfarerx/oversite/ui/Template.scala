@@ -116,14 +116,84 @@ object Template {
       ctx.describe(ctx.self)
 
     /**
-     * Returns the scripts that this template references.
+     * Attempts to return the site manifest.
      *
-     * @param entity The entity to return the scripts for.
+     * @param entity The entity to return the site manifest for.
      * @param ctx    The context being published in.
-     * @return The scripts that this template references.
+     * @return The site manifest.
      */
-    protected def scripts(entity: T)(implicit ctx: Context): IO[Vector[Reference]] =
-      defaultAssetReferences(Pointer.Script, ctx.location)
+    protected def manifest(entity: T)(implicit ctx: Context): IO[Option[Reference]] =
+      Href(Pointer.Json(Location.empty, "site.json")).redeem(_ => None, h => Some(Reference(h)))
+
+    /**
+     * Attempts to return the 16 x 16 favicon.
+     *
+     * @param entity The entity to return the favicon for.
+     * @param ctx    The context being published in.
+     * @return The 16 x 16 favicon.
+     */
+    protected def favicon16(entity: T)(implicit ctx: Context): IO[Option[Reference]] =
+      Href(Pointer.Image(Location.empty, "favicon-16x16.png")).redeem(_ => None, h => Some(Reference(h)))
+
+    /**
+     * Attempts to return the 32 x 32 favicon.
+     *
+     * @param entity The entity to return the favicon for.
+     * @param ctx    The context being published in.
+     * @return The 32 x 32 favicon.
+     */
+    protected def favicon32(entity: T)(implicit ctx: Context): IO[Option[Reference]] =
+      Href(Pointer.Image(Location.empty, "favicon-32x32.png")).redeem(_ => None, h => Some(Reference(h)))
+
+    /**
+     * Attempts to return the apple touch icon.
+     *
+     * @param entity The entity to return the apple touch icon for.
+     * @param ctx    The context being published in.
+     * @return The apple touch icon.
+     */
+    protected def appleTouchIcon(entity: T)(implicit ctx: Context): IO[Option[Reference]] =
+      Href(Pointer.Image(Location.empty, "apple-touch-icon.png")).redeem(_ => None, h => Some(Reference(h)))
+
+    /**
+     * Attempts to return the mask icon.
+     *
+     * @param entity The entity to return the mask icon for.
+     * @param ctx    The context being published in.
+     * @return The mask icon.
+     */
+    protected def maskIcon(entity: T)(implicit ctx: Context): IO[Option[Reference]] =
+      Href(Pointer.Image(Location.empty, "safari-pinned-tab.svg")).redeem(_ => None, h => Some(Reference(h)))
+
+    /**
+     * Attempts to return the mask icon color.
+     *
+     * @param entity The entity to return the mask icon color for.
+     * @param ctx    The context being published in.
+     * @return The mask icon color.
+     */
+    protected def maskIconColor(entity: T)(implicit ctx: Context): IO[Option[String]] =
+      IO.pure(None)
+
+    /**
+     * Attempts to return the Microsoft tile color.
+     *
+     * @param entity The entity to return the Microsoft tile color for.
+     * @param ctx    The context being published in.
+     * @return The Microsoft tile color.
+     */
+    protected def msApplicationTileColor(entity: T)(implicit ctx: Context): IO[Option[String]] =
+      IO.pure(None)
+
+    /**
+     * Attempts to return the theme color.
+     *
+     * @param entity The entity to return the theme color for.
+     * @param ctx    The context being published in.
+     * @return The theme color.
+     */
+    protected def themeColor(entity: T)(implicit ctx: Context): IO[Option[String]] =
+      IO.pure(None)
 
     /**
      * Returns the stylesheets that this template references.
@@ -134,6 +204,16 @@ object Template {
      */
     protected def stylesheets(entity: T)(implicit ctx: Context): IO[Vector[Reference]] =
       defaultAssetReferences(Pointer.Stylesheet, ctx.location)
+
+    /**
+     * Returns the scripts that this template references.
+     *
+     * @param entity The entity to return the scripts for.
+     * @param ctx    The context being published in.
+     * @return The scripts that this template references.
+     */
+    protected def scripts(entity: T)(implicit ctx: Context): IO[Vector[Reference]] =
+      defaultAssetReferences(Pointer.Script, ctx.location)
 
     /**
      * Create the content of the `body` tag.
@@ -156,7 +236,14 @@ object Template {
       _image <- _metadata.image map (ctx resolve _ map (Some(_))) getOrElse
         ctx.resolve(Pointer.Image(Pointer.Image.name)).redeem(_ => None, Some(_))
       _alt <- _image map ctx.alt getOrElse IO.pure(None)
-      _favicon <- ctx.resolve(ctx.site.icon)
+      _manifest <- manifest(entity)
+      _favicon16 <- favicon16(entity)
+      _favicon32 <- favicon32(entity)
+      _appleTouchIcon <- appleTouchIcon(entity)
+      _maskIcon <- maskIcon(entity)
+      _maskIconColor <- maskIconColor(entity)
+      _msApplicationTileColor <- msApplicationTileColor(entity)
+      _themeColor <- themeColor(entity)
       _stylesheets <- stylesheets(entity)
       _scripts <- scripts(entity)
     } yield {
@@ -188,10 +275,44 @@ object Template {
         meta(name := "twitter:card", content := src map (_ => "summary_large_image") getOrElse "summary"),
         ctx.site.owner.twitter map (t => meta(name := "twitter:site", content := t)),
         author.twitter map (t => meta(name := "twitter:creator", content := t)),
-        link(
-          rel := "shortcut icon",
-          href := _favicon.href
-        ),
+        _manifest map (ref => link(
+          rel := "manifest",
+          href := ref.href.value,
+          ref.integrity map (attr("integrity") := _),
+          ref.crossorigin map (attr("crossorigin") := _)
+        )),
+        _favicon16 map (ref => link(
+          rel := "icon",
+          ref.href.source.variant map (`type` := _.mimeType),
+          attr("sizes") := "16x16",
+          href := ref.href.value,
+          ref.integrity map (attr("integrity") := _),
+          ref.crossorigin map (attr("crossorigin") := _)
+        )),
+        _favicon32 map (ref => link(
+          rel := "icon",
+          ref.href.source.variant map (`type` := _.mimeType),
+          attr("sizes") := "32x32",
+          href := ref.href.value,
+          ref.integrity map (attr("integrity") := _),
+          ref.crossorigin map (attr("crossorigin") := _)
+        )),
+        _appleTouchIcon map (ref => link(
+          rel := "apple-touch-icon",
+          attr("sizes") := "180x180",
+          href := ref.href.value,
+          ref.integrity map (attr("integrity") := _),
+          ref.crossorigin map (attr("crossorigin") := _)
+        )),
+        _maskIcon map (ref => link(
+          rel := "mask-icon",
+          href := ref.href.value,
+          _maskIconColor map (color := _),
+          ref.integrity map (attr("integrity") := _),
+          ref.crossorigin map (attr("crossorigin") := _)
+        )),
+        _msApplicationTileColor map (c => meta(name := "msapplication-TileColor", content := c)),
+        _themeColor map (c => meta(name := "theme-color", content := c)),
         _stylesheets map (ref => link(
           rel := "stylesheet",
           href := ref.href.value,

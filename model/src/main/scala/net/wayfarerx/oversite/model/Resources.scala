@@ -108,17 +108,46 @@ object Resources {
     /** The class loader to use. */
     def classLoader: ClassLoaderType
 
+    /** The parent of this classpath. */
+    final lazy val parent: Resources = Option(classLoader.getParent) map (Classpath(_)) getOrElse Default
+
     /* Find resources in the underlying class loader. */
     final override def find(resource: Path.Regular): IO[Option[URL]] =
-      select(resource) map (r => IO(Option(classLoader.getResource(r)))) getOrElse IO.pure(None)
+      select(resource) map (res => IO(Option(classLoader.getResource(res)))) getOrElse IO.pure(None)
 
     /* Detect resources in the underlying class loader. */
     final override def detect(resource: Path.Regular): IO[List[URL]] =
-      select(resource) map (r => IO(classLoader.getResources(r).asScala.toList)) getOrElse IO.pure(Nil)
+      select(resource) map (res => IO(classLoader.getResources(res).asScala.toList)) getOrElse IO.pure(Nil)
+
+    /* Try to list resources from the underlying class loader chain. */
+    final override def list(directory: Path.Regular): IO[List[String]] = {
+
+      def filter(items: List[String]): IO[List[String]] = items match {
+        case head :: tail => for {
+          h <- find(head)
+          t <- filter(tail)
+        } yield h map (_ => head :: t) getOrElse t
+        case _ => IO.pure(Nil)
+      }
+
+      for {
+        inherited <- parent list directory
+        provided <- listLocal(directory)
+        result <- filter((inherited ::: provided.filter(select(_).isDefined)).distinct)
+      } yield result
+    }
 
     /* Load a class from the underlying class loader. */
     final override def load(className: String): IO[Class[_]] =
       IO(classLoader.loadClass(className))
+
+    /**
+     * Attempts to list the classpath's resources contained in a directory.
+     *
+     * @param directory The directory to list the immediate children of.
+     * @return The result of attempting to list the classpath's resources contained in a directory.
+     */
+    protected def listLocal(directory: Path.Regular): IO[List[String]]
 
   }
 
@@ -171,7 +200,7 @@ object Resources {
       override type ClassLoaderType = ClassLoader
 
       /* Try to list resources in the underlying class loader. */
-      override def list(directory: Path.Regular): IO[List[String]] =
+      override def listLocal(directory: Path.Regular): IO[List[String]] =
         select(directory) map (Path(_)) map { path =>
           IO(Option(classLoader.getResourceAsStream(path.toString))).bracket {
             _ map { stream =>
@@ -200,9 +229,6 @@ object Resources {
       /* Use URL class loaders. */
       override type ClassLoaderType = URLClassLoader
 
-      /** The parent of this URL classpath. */
-      val parent: Resources = Option(classLoader.getParent) map (Classpath(_)) getOrElse Default
-
       /** The URLs referenced by this source. */
       private val entries = Cached {
 
@@ -219,7 +245,7 @@ object Resources {
       }
 
       /* Try to list resources from the underlying class loader's URLs and the parent resources. */
-      override def list(directory: Path.Regular): IO[List[String]] =
+      override def listLocal(directory: Path.Regular): IO[List[String]] =
         select(directory) map (Path(_)) map { path =>
 
           /* List from each URL. */
@@ -231,10 +257,7 @@ object Resources {
             case _ => IO.pure(Nil)
           }
 
-          for {
-            inherited <- parent list directory
-            provided <- entries flatMap process
-          } yield inherited ::: provided
+          entries flatMap process
         } getOrElse IO.pure(Nil)
 
     }

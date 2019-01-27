@@ -35,7 +35,4 @@ trait Site[T <: AnyRef] {
   /** The scope that describes this site. */
   def scopes: Scope[T]
 
-  /** The icon that describes this site. */
-  def icon: Pointer[Pointer.Image] = Pointer.Image(name"icon")
-
 }

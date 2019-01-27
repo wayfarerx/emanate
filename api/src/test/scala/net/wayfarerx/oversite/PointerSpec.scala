@@ -86,12 +86,12 @@ class PointerSpec extends FlatSpec with Matchers {
   }
 
   it should "handle asset pointers" in {
-    Seq(Page, Image, Stylesheet, Script) flatMap (a => a.variants.toList map (a -> _)) foreach {
-      case (asset, extension) =>
+    Seq(Page, Image, Stylesheet, Script, Json) flatMap (a => a.variants.toList map (a -> _)) foreach {
+      case (asset, variant) =>
         val name = name"name"
         val relative = Prefix.Relative(Path("relative"))
         val absolute = Prefix.Absolute(Location.resolved(Path("absolute")))
-        val suffix = asset.name + "." + extension
+        val suffix = asset.name + "." + variant.extension
         // Verify asset pointer construction.
         asset(name) shouldBe Search[Asset](asset, Prefix.empty, name)
         asset(relative.path, name) shouldBe Search[Asset](asset, relative, name)

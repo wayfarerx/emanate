@@ -32,6 +32,13 @@ sealed trait Pointer[+T <: Pointer.Type] {
   /** The type of this pointer. */
   val tpe: T
 
+  /**
+   * Attempts to determine the asset's variant.
+   *
+   * @return The the asset's variant.
+   */
+  def variant: Option[Pointer.Asset.Variant]
+
 }
 
 /**
@@ -51,8 +58,11 @@ object Pointer {
   /** The type of script pointers. */
   type Script = Script.type
 
+  /** The type of JSON pointers. */
+  type Json = Json.type
+
   /** The supported assets. */
-  val Assets: List[Asset] = List(Page, Image, Stylesheet, Script)
+  val Assets: List[Asset] = List(Page, Image, Stylesheet, Script, Json)
 
   /** The index of assets by prefix. */
   lazy val AssetsByPrefix: Map[Name, Asset] =
@@ -180,6 +190,9 @@ object Pointer {
     name: Name
   ) extends Internal[T] {
 
+    /* No variant available. */
+    override def variant: Option[Asset.Variant] = None
+
     /* Return a new copy. */
     override def withPrefix(prefix: Prefix): Search[T] = copy(prefix = prefix)
 
@@ -219,6 +232,10 @@ object Pointer {
 
     /** The hypertext reference for this pointer. */
     def href: String
+
+    /* No variant available. */
+    override def variant: Option[Asset.Variant] =
+      Name(href substring href.lastIndexOf('.') + 1) flatMap VariantsByExtension.get
 
   }
 
@@ -702,9 +719,10 @@ object Pointer {
      * A particular variant of the enclosing asset type.
      *
      * @param asset      The asset this variant represents.
+     * @param mimeType   The mime type of this variant.
      * @param extensions The extensions for this variant.
      */
-    case class Variant(asset: Asset, extensions: NonEmptySet[Name]) {
+    case class Variant(asset: Asset, mimeType: String, extensions: NonEmptySet[Name]) {
 
       /** The default extension for this variant. */
       def extension: Name = extensions.toSortedSet minBy (_.normal.length)
@@ -720,43 +738,47 @@ object Pointer {
        * Creates an asset variant with the specified settings.
        *
        * @param asset      The asset that this variant represents.
+       * @param mimeType   The mime type of the variant.
        * @param extension  The default extension to use for the asset variant.
        * @param extensions The other extensions to use for the asset variant.
        * @return An asset variant with the specified settings.
        */
-      def apply(asset: Asset, extension: Name, extensions: Name*): Variant =
-        Variant(asset, NonEmptySet(extension, SortedSet(extensions: _*)))
+      def apply(asset: Asset, mimeType: String, extension: Name, extensions: Name*): Variant =
+        Variant(asset, mimeType, NonEmptySet(extension, SortedSet(extensions: _*)))
 
       /**
        * Creates an asset variant with the specified settings.
        *
        * @param asset      The asset that this variant represents.
+       * @param mimeType   The mime type of the variant.
        * @param extension  The default extension to use for the asset variant.
        * @param extensions The other extensions to use for the asset variant.
        * @return An asset variant with the specified settings.
        */
-      def of(asset: Asset, extension: Name, extensions: SortedSet[Name]): Variant =
-        apply(asset, extension, extensions.toSeq: _*)
+      def of(asset: Asset, mimeType: String, extension: Name, extensions: SortedSet[Name]): Variant =
+        apply(asset, mimeType, extension, extensions.toSeq: _*)
 
       /**
        * Creates an asset variant with a single extension.
        *
        * @param asset     The asset that this variant represents.
+       * @param mimeType  The mime type of the variant.
        * @param extension The extension to use for the asset variant.
        * @return An asset variant with a single extension.
        */
-      def one(asset: Asset, extension: Name): Variant =
-        fromSet(asset, SortedSet(extension)).get
+      def one(asset: Asset, mimeType: String, extension: Name): Variant =
+        fromSet(asset, mimeType, SortedSet(extension)).get
 
       /**
        * Attempts to crate an asset variant with the specified settings.
        *
        * @param asset      The asset that this variant represents.
+       * @param mimeType   The mime type of the variant.
        * @param extensions The extensions to use for the asset variant.
        * @return An asset variant with the specified settings if one could be created.
        */
-      def fromSet(asset: Asset, extensions: SortedSet[Name]): Option[Variant] =
-        NonEmptySet.fromSet(extensions) map (Variant(asset, _))
+      def fromSet(asset: Asset, mimeType: String, extensions: SortedSet[Name]): Option[Variant] =
+        NonEmptySet.fromSet(extensions) map (Variant(asset, mimeType, _))
 
     }
 
@@ -768,7 +790,7 @@ object Pointer {
   case object Page extends Asset {
 
     /** HTML pages. */
-    val html: Asset.Variant = Asset.Variant.one(this, name"html")
+    val html: Asset.Variant = Asset.Variant.one(this, "text/html", name"html")
 
     /* Define the asset type. */
     override type AssetType = Page
@@ -790,16 +812,19 @@ object Pointer {
   case object Image extends Asset {
 
     /** GIF images. */
-    val gif: Asset.Variant = Asset.Variant.one(this, name"gif")
+    val gif: Asset.Variant = Asset.Variant.one(this, "image/gif", name"gif")
 
     /** JPG images. */
-    val jpg: Asset.Variant = Asset.Variant(this, name"jpg", name"jpeg")
+    val jpg: Asset.Variant = Asset.Variant(this, "image/jpeg", name"jpg", name"jpeg")
 
     /** PNG images. */
-    val png: Asset.Variant = Asset.Variant.one(this, name"png")
+    val png: Asset.Variant = Asset.Variant.one(this, "image/png", name"png")
 
     /** ICO images. */
-    val ico: Asset.Variant = Asset.Variant.one(this, name"ico")
+    val ico: Asset.Variant = Asset.Variant.one(this, "image/vnd.microsoft.icon", name"ico")
+
+    /** SVG images. */
+    val svg: Asset.Variant = Asset.Variant.one(this, "image/svg+xml", name"svg")
 
     /* Define the asset type. */
     override type AssetType = Image
@@ -821,7 +846,7 @@ object Pointer {
   case object Stylesheet extends Asset {
 
     /** CSS stylesheets. */
-    val css: Asset.Variant = Asset.Variant.one(this, name"css")
+    val css: Asset.Variant = Asset.Variant.one(this, "text/css", name"css")
 
     /* Define the asset type. */
     override type AssetType = Stylesheet
@@ -843,7 +868,7 @@ object Pointer {
   case object Script extends Asset {
 
     /** JS scripts. */
-    val js: Asset.Variant = Asset.Variant.one(this, name"js")
+    val js: Asset.Variant = Asset.Variant.one(this, "text/javascript", name"js")
 
     /* Define the asset type. */
     override type AssetType = Script
@@ -856,6 +881,28 @@ object Pointer {
 
     /* The extensions to search for. */
     override val variants: NonEmptyList[Asset.Variant] = NonEmptyList.of(js)
+
+  }
+
+  /**
+   * The JSON pointer type.
+   */
+  case object Json extends Asset {
+
+    /** JS scripts. */
+    val json: Asset.Variant = Asset.Variant.one(this, "application/json", name"json")
+
+    /* Define the asset type. */
+    override type AssetType = Json
+
+    /* The search prefix. */
+    override val prefix: Option[Name] = Some(name"data")
+
+    /* The default name. */
+    override val name: Name = name"data"
+
+    /* The extensions to search for. */
+    override val variants: NonEmptyList[Asset.Variant] = NonEmptyList.of(json)
 
   }
 

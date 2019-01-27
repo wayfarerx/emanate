@@ -708,19 +708,19 @@ object Node {
      */
     def apply[T <: AnyRef](siteImplementation: String, resources: Option[Resources]): IO[Root[T]] =
       for {
-        res <- IO {
+        _resources <- IO {
           resources orElse {
             Option(Thread.currentThread.getContextClassLoader)
               .orElse(Option(getClass.getClassLoader))
               .map(Resources.Classpath(_))
           } getOrElse Resources.Default
         }
-        site <- res.load(siteImplementation) flatMap (c => IO(c.newInstance.asInstanceOf[Site[T]]))
+        site <- _resources.load(siteImplementation) flatMap (c => IO(c.newInstance.asInstanceOf[Site[T]]))
         resource <- (site.scopes match {
-          case Scope.Nested(_, _, _) => res.find(IndexFile)
-          case Scope.Aliased(p, _, _, _) => res.find(p + IndexFile)
+          case Scope.Nested(_, _, _) => _resources find IndexFile
+          case Scope.Aliased(p, _, _, _) => _resources find p + IndexFile
         }) flatMap (_ map IO.pure getOrElse Problem("Unable to find root index file."))
-      } yield Root(site, resource, res)
+      } yield Root(site, resource, _resources)
 
   }
 

@@ -3,7 +3,7 @@ import Dependencies._
 lazy val common = Seq(
   organization := "net.wayfarerx.oversite",
   scalaVersion := "2.12.7",
-  version := "0.6.0",
+  version := "0.6.1",
   scalacOptions ++= Seq("-unchecked", "-deprecation", "-feature", "-Ypartial-unification"),
   libraryDependencies += ScalaTest % Test,
   publishMavenStyle := false,
